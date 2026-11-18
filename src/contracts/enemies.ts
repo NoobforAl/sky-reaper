@@ -142,6 +142,13 @@ export interface Enemy {
  * Implemented by src/enemies/index.ts (Enemy agent). Engine calls these.
  * Movement for ground units is added to world scroll automatically by the Engine when `def.anchored !== false`
  * (i.e. the behaviour only needs to apply the unit's OWN motion; the Engine applies scrollSpeed).
+ *
+ * Position ownership: `update()` integrates the unit's own motion directly into e.x/e.y and writes e.vx/e.vy as
+ * informational velocity. The Engine must NOT integrate vx/vy for enemies; it only adds scrollSpeed*dt for anchored ground units.
+ * Hit order: `onHit` is called AFTER hp has been reduced, and only while the enemy is still alive.
+ * Death: `onDeath` is also called for enemies culled off-screen (hp > 0) — check `e.hp <= 0` for real kills.
+ * Boss parts: set `e.data.part = "<partName>"` on spawn; the Engine passes it to BossController.onPartDestroyed.
+ * Missiles: the Engine's spawnBullet emits `missileLaunched` for every isMissile bullet; pattern code must not emit it again.
  */
 export interface EnemySystem {
   readonly defs: Record<string, EnemyDef>;

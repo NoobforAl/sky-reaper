@@ -57,6 +57,9 @@ export interface RunStats {
   /** 0..1 fraction of spawned destructible enemies killed */
   killRate: number;
   spawned: number;
+  /** current combo multiplier (1..2) and seconds left in the chain; optional (engine fills them at runtime) */
+  combo?: number;
+  comboTimer?: number;
 }
 
 export type FxKind =
@@ -131,6 +134,7 @@ export interface WorldAPI {
   spawnBullet(spec: BulletSpawn): void;
   spawnHazard(spec: HazardSpawn): void;
   spawnPickup(kind: PickupKind, x: number, y: number): void;
+  /** `delay` is in SECONDS (values > 10 are treated as ms for safety). */
   spawnFx(kind: FxKind, x: number, y: number, opts?: { scale?: number; delay?: number; vx?: number; vy?: number }): void;
   /** damage an enemy directly (boss scripts, chain explosions). byPlayer false => no score */
   damageEnemy(e: Enemy, amount: number, byPlayer?: boolean): void;

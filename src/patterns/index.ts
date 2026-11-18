@@ -1,10 +1,9 @@
-// STUB (Orchestrator) - Enemy agent replaces with the data-driven pattern framework.
-import type { PatternDef, PatternRunner } from "../contracts";
-
-export const PATTERNS: Record<string, PatternDef> = {};
-
-export const patternRunner: PatternRunner = {
-  start() {
-    return { done: true, update() {}, cancel() {} };
-  },
-};
+/**
+ * Pattern framework entry point (Enemy/AI agent).
+ *  - patternRunner: PatternRunner  (contract)
+ *  - PATTERNS: named reusable PatternDefs (~40, stable ids)
+ *  - bulletPresets / makeBullet: shared bullet visuals for bosses
+ */
+export { patternRunner, MAX_BULLET_SPEED, MAX_AIMED_SINGLE_SPEED, MAX_MISSILE_TURN, setEmitMissileEvents } from "./runner";
+export { PATTERNS, resolvePattern } from "./library";
+export { bulletPresets, makeBullet, type BulletPresetId } from "./presets";
