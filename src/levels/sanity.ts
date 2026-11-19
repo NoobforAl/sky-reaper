@@ -11,17 +11,19 @@
  * warns about stationary ground structures placed on the water. `checkGusts(script)` checks the authored wind gusts
  * (length, push, telegraph room, no bomber carpet / drone row / boss overlap) and `checkCitadel()` replays the citadel
  * structures through the base-layout snapper (every one must find a free plot spot off the runway).
+ * Round 7 (R6-4): `checkLand(script)` replays every moving ground vehicle in the river biomes and fails when its path
+ * reaches the water off a road / rail.
  * Node (no browser): load this module with Vite's ssrLoadModule; set a fake `window` ({ innerWidth, innerHeight,
  * location.search: "?layout=wide" }) first to check the wide mapping.
  */
-import { DESIGN_W, GAME_H, PICKUP_KINDS, type ChapterDef } from "../contracts";
+import { DESIGN_W, GAME_H, GAME_W, PICKUP_KINDS, type ChapterDef } from "../contracts";
 import { enemySystem } from "../enemies";
 import { bosses, BOSS_PART_DEFS } from "../bosses";
 import { formationSlot } from "./builders";
 import { CHAPTER_SCRIPTS } from "./index";
 import { CitadelLayout, hasRiver, riverX, waterHalfW } from "./backgrounds";
-import { hullHalf, isRiverBoat, laneHalf, riverFollowShift } from "./naval";
-import { authoredBoxes, scrollProfile, scrollSpeedAt } from "./runner";
+import { hullHalf, isLandMover, isRiverBoat, landHalf, landOnWater, landSpawnX, laneHalf, riverFollowShift } from "./naval";
+import { authoredBoxes, buildFeatures, landGuardShift, onRoad, scrollProfile, scrollSpeedAt } from "./runner";
 import { boxesOverlap, OVERLAP_WINDOW } from "./spacing";
 import type { ChapterScript } from "./types";
 import { TUTORIAL_HINTS } from "./tutorial";
@@ -200,6 +202,115 @@ export function checkNaval(script: ChapterScript): { errors: string[]; warnings:
   return { errors, warnings, boats, samples };
 }
 
+/**
+ * Land vehicles in river biomes (round 7, QA R6-4): replays every authored moving ground unit (tanks, APCs, walkers,
+ * crawlers; not boats) with its own movement (src/enemies/movement.ts: straight, sine around its spawn x, diagonal
+ * bouncing off the field edges) on top of the scroll, sampled every step while it is on screen, away from road / rail
+ * set-pieces (they are drawn over the river).
+ *  - straight / sine movers (tanks, walkers, crawlers) hold their column, so their raw path must stay dry: ERROR on any
+ *    water contact. Sine movers are replayed with both weave directions (the box carries no `dir` / `phase`).
+ *  - diagonal movers (APCs) drift ~14 u/s sideways and would cross any river, so they are replayed WITH the runner's
+ *    bank guard (`landBankShift`, turn away from the water, like the wall bounce): ERROR when the vehicle is on the
+ *    water when it comes on screen or when the guard has to move it more than LAND_JUMP u in one step (a visible jump).
+ */
+/** largest bank-guard move per 1/60 s step that still reads as the river bend nudging a vehicle (game units) */
+const LAND_JUMP = 2;
+/** spawn moves (landSpawnX) larger than this are listed in `moved` (authored x worth fixing; not an error) */
+const LAND_MOVE_WARN = 48;
+
+export function checkLand(script: ChapterScript): { errors: string[]; vehicles: number; samples: number; maxMove: number; moved: string[] } {
+  const def = script.def;
+  const errors: string[] = [];
+  const moved: string[] = [];
+  let vehicles = 0;
+  let samples = 0;
+  let maxMove = 0;
+  if (!hasRiver(def.biome)) return { errors, vehicles, samples, maxMove, moved };
+  const S = scrollProfile(def);
+  const feats = buildFeatures(script, S);
+  const onFeature = (x: number, wy: number) => onRoad(feats, x, wy);
+  const DT = 1 / 30;
+  const DEG = Math.PI / 180;
+  for (const b of authoredBoxes(script)) {
+    if (!isLandMover(def.biome, b.id)) continue;
+    const d = enemySystem.defs[b.id]!;
+    const m = d.movement;
+    vehicles++;
+    const half = landHalf(b.id);
+    const dirs = m.kind === "diagonal" || m.kind === "straight" ? [b.vx < 0 ? -1 : 1] : [1, -1];
+    const wyS = S(b.t) - b.y;
+    const road = onFeature(b.x, wyS);
+    for (const dir of dirs) {
+      // runner spawn step (ChapterRunner.spawn -> landSpawnX), skipped on a road / rail like the runner
+      const sx = road ? b.x : landSpawnX(def.biome, b.id, b.x, b.y, wyS, scrollSpeedAt(def, b.t), dir, onFeature);
+      if (Math.abs(sx - b.x) > maxMove) maxMove = Math.abs(sx - b.x);
+      if (Math.abs(sx - b.x) > LAND_MOVE_WARN) moved.push(`${b.tag} ${Math.round(b.x)} -> ${Math.round(sx)}`);
+      let x = sx;
+      const x0 = sx;
+      let y = b.y;
+      let t = 0;
+      let time = b.t;
+      let sy = S(time);
+      let heading = m.kind === "diagonal" ? (dir === -1 ? 180 - (m.angle ?? 60) : (m.angle ?? 60)) : 0;
+      let worst = 0;
+      let worstAt = "";
+      let seen = false;
+      for (let step = 0; step < 30 * 120 && y < GAME_H + 40; step++) {
+        t += DT;
+        const sp = m.speed;
+        if (m.kind === "straight") {
+          const a = m.angle ?? 90;
+          const ax = dir === -1 ? 180 - a : a;
+          x += Math.cos(ax * DEG) * sp * DT;
+          y += Math.sin(ax * DEG) * sp * DT;
+        } else if (m.kind === "sine") {
+          x = x0 + Math.sin(t * (m.freq ?? 0.5) * Math.PI * 2) * (m.amp ?? 50) * dir;
+          y += sp * DT;
+        } else if (m.kind === "diagonal") {
+          let vx = Math.cos(heading * DEG) * sp;
+          const margin = Math.max(12, d.size[0] || 16);
+          if ((x + vx * DT < margin && vx < 0) || (x + vx * DT > GAME_W - margin && vx > 0)) {
+            heading = 180 - heading;
+            vx = -vx;
+          }
+          x += vx * DT;
+          y += Math.sin(heading * DEG) * sp * DT;
+        }
+        const sc = scrollSpeedAt(def, time);
+        y += sc * DT;
+        sy += sc * DT;
+        time += DT;
+        if (y < -20) continue;
+        samples++;
+        const wy = sy - y;
+        if (m.kind === "diagonal") {
+          // runner bank guard (ChapterRunner.keepOnLand)
+          const shift = landGuardShift(def.biome, feats, x, wy, half);
+          const first = !seen;
+          seen = true;
+          if (shift === 0) continue;
+          if (first || Math.abs(shift) > LAND_JUMP * 2) {
+            if (Math.abs(shift) > worst) {
+              worst = Math.abs(shift);
+              worstAt = `${first ? "on screen" : "guard jump"} t+${t.toFixed(1)}s (${Math.round(x)}, ${Math.round(y)})`;
+            }
+          }
+          x += shift;
+          if (Math.cos(heading * DEG) * shift < 0) heading = 180 - heading;
+          continue;
+        }
+        const over = landGuardShift(def.biome, feats, x, wy, half) === 0 ? 0 : landOnWater(def.biome, x, wy, half);
+        if (over > worst) {
+          worst = over;
+          worstAt = `t+${t.toFixed(1)}s (${Math.round(x)}, ${Math.round(y)})`;
+        }
+      }
+      if (worst > 0) errors.push(`vehicle on water ${b.tag} @(${Math.round(b.x)}) dir ${dir}: ${worst.toFixed(1)}u onto the water at ${worstAt}`);
+    }
+  }
+  return { errors, vehicles, samples, maxMove, moved };
+}
+
 /** round 6 (#14): gust push ranges per biome (fraction of max speed) */
 const GUST_PUSH: Record<string, [number, number]> = { desert: [0.55, 0.7], arctic: [0.25, 0.4] };
 /** seconds a kamikaze drone row stays dangerous after it spawns */
@@ -291,6 +402,7 @@ export function checkLevels(): ChapterReport[] {
     const nv = checkNaval(s);
     for (const e of nv.errors) r.errors.push(e);
     for (const w of nv.warnings) r.warnings.push(w);
+    for (const e of checkLand(s).errors) r.errors.push(e);
     for (const e of checkGusts(s).errors) r.errors.push(e);
     if (s.def.biome === "citadel") for (const e of checkCitadel(s).errors) r.errors.push(e);
     const ov = checkOverlaps(s);

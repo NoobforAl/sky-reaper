@@ -19,9 +19,13 @@ export function citadel(): ChapterScript {
   tl.at(9).stream("interceptor", 4, RC, 400);
   tl.at(12).spawns("citadel_turret", [LC, RC]).spawn("aa_turret", C, undefined, -70);
   tl.at(14).arc("fighter_basic", 9, C, { dx: 150 });
+  // round 7 (R6-1): mid-wave pressure + heavy-tank bomb checks (each after a bomb pickup)
+  tl.at(15).pickup("bomb", LC);
+  tl.at(16.5).column("tank_heavy", 2, LC, { dy: 90 });
   tl.at(18).spawn("missile_carrier", LC).spawn("missile_carrier", RC, undefined, -110);
   tl.at(20).pickup("bomb", C);
   tl.at(22).vee("fighter_heavy", 3, C, { dx: 70, dy: 40 }).spawn("fighter_heavy_elite", C, undefined, -140);
+  tl.at(25.5).stream("interceptor", 4, C, 380);
   tl.at(26).column("tank_heavy", 2, L + 40, { dy: 80 }).column("tank_heavy", 2, R - 40, { dy: 80 });
 
   // ---- launcher gauntlet
@@ -31,10 +35,12 @@ export function citadel(): ChapterScript {
   tl.at(35).stream("fighter_basic_elite", 6, L, 280).stream("fighter_basic_elite", 6, R, 280);
   tl.at(38).spawns("citadel_turret", [C]).pickup("bomb", LC);
   tl.at(40).spawn("missile_carrier", C);
+  tl.at(41.5).column("tank_heavy", 2, R - 40, { dy: 90 });
   tl.at(43).sideAmbush("interceptor", 4, "left", 160, 350);
   tl.at(45).sideAmbush("interceptor", 4, "right", 230, 350);
   tl.at(48).pickup("power", C);
   tl.at(49).line("fighter_heavy", 3, C, { dx: 110 }).spawn("shield_drone", C, undefined, -120);
+  tl.at(52).vee("fighter_basic_elite", 5, LC, { dx: 44 });
 
   // ---- drone minefield
   tl.at(54).banner("DRONE SWARM", undefined, 2000, { key: "wave.citadel.droneSwarm" });
@@ -43,7 +49,10 @@ export function citadel(): ChapterScript {
   // round 5 balance P6: no mid-chapter shield pickup here any more
   tl.at(62).spawns("aa_turret", [LC, RC]);
   tl.at(64).stream("interceptor", 5, C, 380);
+  tl.at(64.5).pickup("bomb", C);
+  tl.at(66).spawns("tank_heavy", [L + 40, R - 40]);
   tl.at(68).vee("fighter_basic_elite", 9, C, { dx: 30, dy: 36 });
+  tl.at(71).stream("interceptor", 4, R, 400);
 
   // ---- factory district
   tl.at(73).banner("FACTORY DISTRICT", "BOMB THE PRODUCTION LINES", 2200, { key: "wave.citadel.factory", subKey: "wave.citadel.factory.sub" });
@@ -60,6 +69,7 @@ export function citadel(): ChapterScript {
   tl.at(91).arc("fighter_basic", 9, C, { dx: 150 });
   // round 5 balance P5: the t 95 power pickup is gone (2 scripted power-ups left)
   tl.at(95).spawns("missile_launcher", [L + 30]);
+  tl.at(97).vee("fighter_heavy", 3, C, { dx: 70, dy: 40 });
 
   // ---- heavy air
   tl.at(100).banner("WAVE 6", "HEAVY ESCORT", 2000, { key: "banner.wave", params: { n: 6 }, subKey: "wave.citadel.heavyEscort.sub" });
@@ -68,6 +78,8 @@ export function citadel(): ChapterScript {
   tl.at(107).stream("interceptor_elite", 5, L, 350).stream("interceptor_elite", 5, R, 350);
   tl.at(111).spawns("citadel_turret", [L + 20, C, R - 20]);
   tl.at(114).spawn("missile_carrier", LC).spawn("missile_carrier", RC);
+  tl.at(115.5).pickup("bomb", C);
+  tl.at(116).spawns("tank_heavy", [L + 40, R - 40]);
   // round 5 balance P6: the t 117 repair is gone (the pre-boss repair stays)
   tl.at(118).sideAmbush("interceptor", 6, "left", 140, 200);
   tl.at(118).sideAmbush("interceptor", 6, "right", 240, 200);
@@ -82,6 +94,7 @@ export function citadel(): ChapterScript {
   tl.at(138).spawn("missile_carrier", R - 60);
   tl.at(141).stream("interceptor", 5, RC, 330);
   tl.at(145).arc("fighter_heavy", 5, C, { dx: 140 });
+  tl.at(148).stream("interceptor", 5, C, 360);
 
   // ---- final approach
   tl.at(150).banner("CITADEL WALLS", "NO WAY BACK", 2400, { key: "wave.citadel.walls", subKey: "wave.citadel.walls.sub" });
@@ -93,12 +106,15 @@ export function citadel(): ChapterScript {
   tl.at(162).vee("fighter_heavy", 5, C, { dx: 56, dy: 40 });
   // round 5 (#7): the mine layer follows once the drone rows are in (it used to spawn inside the first row)
   tl.at(166).droneMinefield(3, 5);
+  tl.at(167).pickup("bomb", RC);
+  tl.at(168.5).column("tank_heavy", 2, RC, { dy: 90 });
   tl.at(171).spawn("bomber", C).spawns("interceptor", [L, R]);
   tl.at(172).spawn("mine_layer", LC, undefined, -40);
   tl.at(174).spawns("tank_heavy_elite", [LC, RC]).spawns("citadel_turret", [C]);
   tl.at(177).arc("fighter_basic_elite", 11, C, { dx: 160 });
   tl.at(181).spawn("missile_carrier_elite", LC).spawn("missile_carrier", RC);
   tl.at(185).stream("interceptor_elite", 6, C, 300);
+  tl.at(187).vee("fighter_basic_elite", 7, C, { dx: 40 });
   tl.at(190).pickup("power", LC).pickup("bomb", RC).pickup("shield", C).pickup("repair", C, -60);
 
   tl.at(194).scroll(20);

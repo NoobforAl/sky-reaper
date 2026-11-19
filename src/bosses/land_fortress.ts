@@ -19,7 +19,10 @@ export class LandFortressBoss extends BossBase {
   constructor(world: WorldAPI) {
     // round 5 B1: 1 -> 1.75; round 6 (QA R5-3): desert portrait boss pass ran 36.7 s (< 40 s). +0.1 gave 36.8 s (P1 / P2
     // sit on the 10 s phase floor, only P3 grows) -> 2.2 on the 480 field
-    super("land_fortress", world, WIDE ? 1.75 : 2.2);
+    // round 7 (QA R6-7): on wide fields phase 1 was gate-held 5.65 s (28 % of the HP went in 4.4 s while every part is
+    // exposed): wide HP x1.4 (1.75 -> 2.45) and P1 holds 34 % (phaseAt [0.66, 0.4]), so the gate stays under 3 s
+    super("land_fortress", world, WIDE ? 2.45 : 2.2);
+    if (WIDE) this.phaseAt = [0.66, 0.4];
     this.holdY = 220;
     this.entrySec = 4.5;
     this.addPart("tread", "tread_l", -128, 0);

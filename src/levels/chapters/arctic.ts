@@ -16,14 +16,19 @@ export function arctic(): ChapterScript {
   tl.at(3).vee("interceptor", 3, C, { dx: 60 });
   tl.at(5).spawns("ice_turret", [L + 20, R - 20]);
   tl.at(7).vee("fighter_basic", 7, LC, { dx: 34 });
+  // round 7 (R6-1): first bomb check (2 heavy tanks on the left bank; bomb pickups at t 8 and t 17)
+  tl.at(8).pickup("bomb", L + 40);
+  tl.at(9.5).column("tank_heavy", 2, L + 40, { dy: 90 });
   tl.at(10).spawn("destroyer", C);
   tl.at(12).stream("fighter_basic", 6, R, 320);
   // round 6: turrets kept off the open-water lead (sanity checkNaval structure warnings)
   tl.at(15).spawns("ice_turret", [LC, R]).spawn("radar_station", L + 30, undefined, -90);
   tl.at(17).pickup("bomb", C);
   tl.at(18).arc("fighter_basic", 7, C, { dx: 130 });
+  tl.at(20.5).stream("interceptor", 3, R, 450);
   tl.at(22).spawn("missile_carrier", LC).spawn("missile_carrier", RC, undefined, -120);
   tl.at(25).column("ice_walker", 2, L + 30, { dy: 70 });
+  tl.at(27).vee("fighter_basic", 5, RC);
 
   // ---- blizzard 1
   tl.at(29).banner("BLIZZARD", "VISIBILITY DROPPING", 2200, { key: "wave.arctic.blizzard", subKey: "wave.arctic.blizzard.sub" }).weather("blizzard", 0.6);
@@ -39,6 +44,8 @@ export function arctic(): ChapterScript {
   tl.at(37.5).gust(1, 3, 0.32);
   tl.at(46.5).gust(-1, 2.5, 0.3);
   tl.at(50).weather("none", 0);
+  // round 7 (R6-1): helicopter pair in the lull after the blizzard (gusts end t 49)
+  tl.at(50.5).spawns("helicopter", [LC, RC]);
 
   // ---- armoured train
   tl.at(53).banner("ARMOURED TRAIN", "DERAIL IT", 2200, { key: "wave.arctic.train", subKey: "wave.arctic.train.sub" });
@@ -47,10 +54,12 @@ export function arctic(): ChapterScript {
   tl.at(57).stream("fighter_basic", 6, L, 300);
   tl.at(60).spawns("ice_turret", [LC]).spawn("aa_turret", C + 70, undefined, -60);
   tl.at(62).spawns("interceptor", [L, C]);
+  tl.at(63.5).column("tank_heavy", 2, L + 40, { dy: 90 });
   tl.at(65).vee("fighter_basic", 5, LC);
   tl.at(68).spawn("bomber", C);
   tl.at(71).spawn("missile_carrier", L + 60);
   tl.at(74).arc("fighter_basic_elite", 7, C, { dx: 130 });
+  tl.at(76.5).stream("interceptor", 4, RC, 420);
 
   // ---- drone minefield
   tl.at(79).banner("DRONE MINEFIELD", "SHOOT A PATH THROUGH", 2400, { key: "wave.arctic.minefield", subKey: "wave.arctic.minefield.sub" });
@@ -58,6 +67,7 @@ export function arctic(): ChapterScript {
   tl.at(83).spawns("ice_turret", [L, R + 30]);
   // round 5 balance P6: the t 86 shield pickup is gone
   tl.at(88).stream("interceptor", 3, RC, 500);
+  tl.at(85).vee("fighter_basic_elite", 5, RC + 30, { dx: 44 });
   // round 5 (#7): the faster gunboat leads the destroyer down the lead instead of spawning inside it
   tl.at(90).spawns("gunboat", [C]);
   tl.at(91).spawn("destroyer", C);
@@ -72,9 +82,11 @@ export function arctic(): ChapterScript {
   // round 5 balance P5: the power pickup that shared this beat is gone (2 scripted power-ups left)
   tl.at(106).pickup("bomb", C);
   tl.at(108).stream("fighter_basic", 7, L, 280).stream("fighter_basic", 7, R, 280);
+  tl.at(110).column("tank_heavy", 2, R - 40, { dy: 90 });
   tl.at(112).spawns("helicopter", [LC, RC]);
   tl.at(115).spawns("ice_walker", [L + 30, R - 30]);
   tl.at(118).spawn("bomber", LC).spawn("bomber", RC, undefined, -100);
+  tl.at(121).vee("fighter_basic", 5, C, { y: -60 });
 
   // ---- blizzard 2 (strong)
   tl.at(123).banner("WHITEOUT", "HOLD YOUR LINE", 2200, { key: "wave.arctic.whiteout", subKey: "wave.arctic.whiteout.sub" }).weather("blizzard", 1).wind(-6);
@@ -92,6 +104,7 @@ export function arctic(): ChapterScript {
   tl.at(144).gust(1, 2, 0.3);
   tl.at(145).weather("blizzard", 0.4).wind(0);
   tl.at(146).stream("fighter_basic", 6, LC, 280);
+  tl.at(147.5).spawns("tank_heavy", [L + 40, R - 40]);
 
   // ---- outpost & run-in
   tl.at(150).banner("POLAR OUTPOST", undefined, 2000, { key: "wave.arctic.outpost" }).weather("none", 0);
@@ -102,6 +115,7 @@ export function arctic(): ChapterScript {
   tl.at(153).pickup("bomb", LC).pickup("bomb", RC);
   tl.at(155).stream("interceptor_elite", 4, C, 450);
   tl.at(158).line("fighter_basic", 6, C, { dx: 64, y: -90 });
+  tl.at(160).stream("interceptor", 4, R, 420);
   tl.at(162).spawns("missile_launcher", [L + 30, R - 30]);
   tl.at(165).vee("fighter_heavy", 3, C, { dx: 70, dy: 40 }).spawn("fighter_heavy_elite", C, undefined, -140);
   tl.at(169).spawn("destroyer", C).spawns("helicopter", [L + 40, R - 40]);
@@ -109,6 +123,7 @@ export function arctic(): ChapterScript {
   tl.at(177).spawn("bomber_elite", C).spawns("interceptor_elite", [LC, RC]);
   tl.at(181).spawns("ice_turret", [L, C, R]);
   tl.at(184).arc("fighter_basic", 9, C, { dx: 150 });
+  tl.at(186.5).vee("fighter_basic_elite", 5, C, { dx: 44 });
   tl.at(189).pickup("power", LC).pickup("bomb", RC).pickup("shield", C);
   tl.at(191).weather("blizzard", 0.35);
 

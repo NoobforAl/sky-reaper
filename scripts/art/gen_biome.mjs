@@ -39,13 +39,18 @@ const PAINT = {
     b: R5("#3e3220", "#62502e", "#8a7444", "#b09a62", "#d4c494"),
     c: R5("#16220f", "#1f3618", "#2c4c20", "#3e652c", "#58823c"),
     pat: (x, y) => blob(x, y, 4.5, 11) > 0.54,
+    // round 7: faint pale-olive rim so the dark K outline does not merge with the dark canopy (lowest body/ground ratio)
+    rim: { c: hex("#e8eaa0"), a: 120 },
   },
-  // sand / tan with brown disruptive bands (darker than the dunes, the outline does the rest)
+  // round 7 (R6-3): dark olive-drab airframe with dark-brown parts and near-black blotches, plus a 1px light sand rim
+  // outside the outline. The old tan paint sat at the dunes' luminance and vanished over the brown rock patches; the
+  // dark body now separates from the sand by value and the rim separates it from the rock / hardpan.
   desert: {
-    a: R5("#4e3822", "#7a5934", "#a07c4c", "#c4a26a", "#e2c896"),
-    b: R5("#3a2a1a", "#5a4026", "#7a5a36", "#9a7648", "#bc9a66"),
-    c: R5("#24180e", "#3c2616", "#563820", "#704c2c", "#8c643c"),
-    pat: (x, y) => blob(x, y, 5, 23) > 0.56,
+    a: R5("#1c1e10", "#33381c", "#4c532c", "#68703e", "#8c9458"),
+    b: R5("#20160c", "#382816", "#503a22", "#6a4e30", "#8a6a44"),
+    c: R5("#121208", "#1e200e", "#2c3016", "#3a4020", "#4c5430"),
+    pat: (x, y) => blob(x, y, 5, 23) > 0.6,
+    rim: { c: hex("#fff0c8"), a: 230 },
   },
   // white / light grey with angular dark-grey splinter
   arctic: {
@@ -136,7 +141,24 @@ function repaint(img, paint, accent) {
       d[i + 1] = c[1];
       d[i + 2] = c[2];
     }
+  if (paint.rim) addRim(o, paint.rim);
   return o;
+}
+
+/** 1px rim outside the silhouette: fully transparent pixels 4-adjacent to an opaque pixel get the rim colour */
+function addRim(img, rim) {
+  const { w, h, d } = img;
+  const solid = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] === 255;
+  const hit = [];
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++)
+      if (d[(y * w + x) * 4 + 3] === 0 && (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1))) hit.push((y * w + x) * 4);
+  for (const i of hit) {
+    d[i] = rim.c[0];
+    d[i + 1] = rim.c[1];
+    d[i + 2] = rim.c[2];
+    d[i + 3] = rim.a;
+  }
 }
 
 /** key matcher: enemy_<airId> + optional _bankl/_bankr + optional _dmg */

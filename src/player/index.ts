@@ -42,6 +42,11 @@ export const PLAYER_TUNING = {
   marginBottom: 34,
   /** i-frames after a hit that reached the hull (QA #1: 1.2 -> 0.9; BALANCE_SPEC P1: 0.7) */
   hitIframes: 0.7,
+  /**
+   * round 7 (QA R6-2): one hit never takes more than this fraction of a full life (max hull + max shield), so a single
+   * heavy shell cannot cost most of a life (desert tank shells were 92-110 of 140).
+   */
+  maxHitFrac: 0.45,
   /** i-frames after a hit fully absorbed by the shield (0.7 -> 0.5; BALANCE_SPEC P1: 0.35) */
   shieldOnlyIframes: 0.35,
   flareIframes: 0.4,
@@ -322,6 +327,9 @@ export class PlayerController {
     const p = this.state;
     if (!p.alive || p.invuln > 0 || w.god || amount <= 0) return false;
     const T = PLAYER_TUNING;
+    // round 7 (QA R6-2): cap a single hit at maxHitFrac of a full life
+    const cap = T.maxHitFrac * (p.maxHp + p.maxShield);
+    if (amount > cap) amount = cap;
     w.mutStats.damageTaken += amount;
     this.shieldT = this.loadout.shieldDelay;
     let rest = amount;

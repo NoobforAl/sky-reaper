@@ -725,12 +725,18 @@ export class BiomeBackground implements BackgroundRenderer {
             continue;
           }
           if (mi > L.M || mi === A) continue;
-          // wall pieces: end caps facing the runway / the avenue, a T into the perimeter wall
+          // wall pieces: end caps facing the runway (and the avenue from outside), a T into the perimeter wall; the inner
+          // segment runs into the avenue kerb
           const capOut = mi === 0 || (A >= 0 && mi === A + 1);
           const capIn = A >= 0 && mi === A - 1;
           if (mi === L.M) this.citPiece("cit_wall_tv", x, y, 0, side > 0, false);
           else if (capOut) this.citPiece("cit_wall_end", x, y, side > 0 ? -90 : 90, false, false);
-          else if (capIn) this.citPiece("cit_wall_end", x, y, side > 0 ? 90 : -90, false, false);
+          else if (capIn) {
+            // round 7 (QA R6-5): the inner compound wall used to stop with an end cap 88 u short of the avenue and read
+            // as a free-standing bar; it now runs on until it meets the avenue kerb (T-joint into the road)
+            this.citPiece("cit_wall_h", x, y, 0, false, false);
+            this.citPiece("cit_wall_h", x + side * (T / 2 - CIT.roadHalf), y, 0, false, false);
+          }
           else this.citPiece("cit_wall_h", x, y, 0, false, false);
         }
       }

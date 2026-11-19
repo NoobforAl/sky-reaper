@@ -65,8 +65,31 @@ export const WORLD_TUNING = {
    * [0.9,1.3,1.7,1.9,2.1] -> [.., 3.0, 3.1, 3.3] -> [.., 3.8, ..] -> this. Ch3 is the upgrade gate (a novice with 0
    * upgrades fails 2/4, the section-11 budget novice wins with 1-2 deaths); ch4/ch5 were tuned for the budget novice
    * (1-2 deaths at 3.1 / 3.3); 0-upgrade ch4/ch5 at these values is not bot-verified yet (round-6 QA).
+   * Round 7 (QA R6-2): ch3 4.6 -> 2.9, ch4 3.1 -> 3.2, ch5 3.3 -> 3.1 (the round-7 citadel density pass made
+   * the budget ship fail 3/4 at 3.3). Bot average hit is flat-to-rising: ch3 ~31.5 <= ch4 ~32 <= ch5 ~32.5 (citadel
+   * bullets are heavier per unit); round 6 was 40-75 in ch3. Part of the ch3 difficulty moved to enemy HP (chapterHp
+   * below). PLAYER_TUNING.maxHitFrac caps any single hit at 45 % of a full life.
    */
-  chapterDmg: [0.9, 1.3, 4.6, 3.1, 3.3],
+  chapterDmg: [0.9, 1.3, 3.0, 3.2, 3.1],
+  /**
+   * round 7 (QA R6-1/R6-2): the upgrade gate moves from damage to enemy durability. Raising damage hurt 0-upgrade and
+   * budget ships alike; HP separates them (a 0-upgrade ship cannot clear lanes before the wave fires, the budget ship
+   * can). Multiplied on top of the level's chapter hpScale for every non-boss enemy. Air units: "heavy" = armoured,
+   * elite or hp >= 40 (heavy fighters, gunships, carriers); "light" = fodder fighters / drones, kept lower so swarms
+   * stay readable. Ground units use chapterHpGround. ch1-2 unchanged. QA overrides: window.__skyBalance.chapterHp / chapterHpLight / chapterHpGround.
+   */
+  // bot iterations (novice 0-upg / novice --budget, seeds 1,2 x both layouts):
+  // HP alone (desert 2.1..3.4) left the 0-upgrade fail rate at 1-2 of 4 (bot noise dominates); HP + chapterDmg ch3 3.0
+  // gave 3/4 fails with budget 0.75 deaths. Citadel air is eased below 1: after the round-7 level density pass the
+  // budget ship failed 3/4 there, while 0-upgrade ships fail 4/4 by t 120-160 at any value tried.
+  chapterHp: [1, 1, 2.8, 1.4, 0.85],
+  chapterHpLight: [1, 1, 1.6, 1.2, 0.9],
+  /**
+   * ground units (tanks, turrets, bases, ships) use this instead of chapterHp: bombs are the ground check, so the gate
+   * is set in whole bombs. tank_heavy (100 HP, armour 3) x level hpScale x this: desert 169 / arctic 182 / citadel 155
+   * HP, i.e. 3 bombs for a 0-upgrade ship (72 per bomb) and 2 for the budget loadout (DAMAGE 2/3/4: 87 / 94 / 102).
+   */
+  chapterHpGround: [1, 1, 1.35, 1.3, 1],
   /**
    * BALANCE_SPEC P4: per-chapter multiplier on enemy drop chances. In-run power is the biggest DPS lever (x4.5),
    * so it gets scarcer later on (a novice should reach the boss at power 3-4); repair / shield drops thin out too.
@@ -76,12 +99,14 @@ export const WORLD_TUNING = {
   sustainDropMul: [1, 1, 0.25, 0.35, 0.3],
   /**
    * QA R5-2: on wide fields the bot / player ends runs at power 1-3 (pickups scatter over 1520u), so wide boss fights ran
-   * ~110 s. Power drops x powerWideMul there, and loose P pickups drift toward the centre band (|x - mid| <=
-   * powerBandHalf game units) at powerDriftSpeed u/s.
+   * ~110 s. Power drops x powerWideMul there, and loose P pickups drift toward the player's column (round 7; was the
+   * centre) until within powerBandHalf game units, at powerDriftSpeed u/s.
    */
+  // round 7 (R5-2 still open: wide ended runs at power 1-3 vs portrait 3-5): drift toward the player, band 260 -> 160,
+  // drift 55 -> 90. powerWideMul 1.5 was tried and let 0-upgrade ships win ch3 wide, so it stays 1.3
   powerWideMul: 1.3,
-  powerBandHalf: 260,
-  powerDriftSpeed: 55,
+  powerBandHalf: 160,
+  powerDriftSpeed: 90,
   /** safety net (docs/PERF_BOMBERS.md #5): carpet-bomb volleys beyond this many live enemy hazards are skipped */
   maxEnemyHazards: 36,
   /**
@@ -96,7 +121,8 @@ export const WORLD_TUNING = {
     noHitPerSec: 2,
     perKillAtCombo: 1,
     comboGate: 1.5,
-    bulletSpeedPerLevel: 0.08,
+    /** round 7 (R5-6): 0.08 -> 0.06; at THREAT 3 the +24 % bullet speed cornered even the expert bot */
+    bulletSpeedPerLevel: 0.06,
     fireRatePerLevel: 0.1,
     scorePerLevel: 0.25,
   },
@@ -139,9 +165,20 @@ interface QaBalance {
   chapterDmg?: number[];
   sustainDropMul?: number[];
   powerDropMul?: number[];
+  chapterHp?: number[];
+  chapterHpLight?: number[];
+  chapterHpGround?: number[];
 }
 
 const EMPTY_OPTS: EnemySpawnOpts = {};
+
+/** round 7 HP gate class for air units: armoured, elite or hp >= 40 (ground units use chapterHpGround) */
+function isHeavy(def: EnemyDef): boolean {
+  if ((def.armor ?? 0) > 0 || def.hp >= 40) return true;
+  const tags = def.tags;
+  if (tags) for (let i = 0; i < tags.length; i++) if (tags[i] === "elite") return true;
+  return false;
+}
 const NULL_DEF: EnemyDef = {
   id: "_null",
   name: "",
@@ -279,6 +316,10 @@ export class World implements WorldAPI, FireContext, PlayerHost {
   private readonly chapterDmgT: ReadonlyArray<number>;
   private readonly sustainT: ReadonlyArray<number>;
   private readonly powerT: ReadonlyArray<number>;
+  /** E1 round 7: per-chapter enemy HP multipliers for this run (heavy / light, see WORLD_TUNING.chapterHp) */
+  private readonly hpHeavy: number;
+  private readonly hpLight: number;
+  private readonly hpGround: number;
   readonly dmgScale: number;
   readonly spdScale: number;
   god = false;
@@ -365,6 +406,9 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     this.chapterDmgT = qb?.chapterDmg ?? T.chapterDmg;
     this.sustainT = qb?.sustainDropMul ?? T.sustainDropMul;
     this.powerT = qb?.powerDropMul ?? T.powerDropMul;
+    this.hpHeavy = (qb?.chapterHp ?? T.chapterHp)[chIdx] ?? 1;
+    this.hpLight = (qb?.chapterHpLight ?? T.chapterHpLight)[chIdx] ?? 1;
+    this.hpGround = (qb?.chapterHpGround ?? T.chapterHpGround)[chIdx] ?? 1;
     this.dmgScale = (T.dmgBase + T.dmgSlope * this.difficulty) * (this.chapterDmgT[chIdx] ?? 1);
     this.spdScale = T.spdBase + T.spdSlope * this.difficulty;
     this.god = !!init.params.godMode;
@@ -760,7 +804,9 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     e.y = y;
     e.vx = 0;
     e.vy = 0;
-    e.maxHp = e.hp = Math.max(1, def.hp * (o.hpScale ?? 1));
+    // bosses / boss parts keep their own HP tuning (src/bosses); regular enemies get the chapter durability gate
+    const chHp = o.bossId ? 1 : def.layer === "ground" ? this.hpGround : isHeavy(def) ? this.hpHeavy : this.hpLight;
+    e.maxHp = e.hp = Math.max(1, Math.round(def.hp * (o.hpScale ?? 1) * chHp));
     e.t = 0;
     e.tOn = 0;
     e.onScreen = false;
@@ -1739,7 +1785,9 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       }
       k.x += k.vx * dt;
       if (WIDE && k.kind === "power" && !k.magnetized) {
-        const off = k.x - GAME_W / 2;
+        // round 7 (R5-2): drift toward the player's column (was the screen centre), so a P dropped on the far flank of
+        // a 1520-wide field is still reachable before it falls out
+        const off = k.x - (p.alive ? p.x : GAME_W / 2);
         if (off > T.powerBandHalf) k.x -= T.powerDriftSpeed * dt;
         else if (off < -T.powerBandHalf) k.x += T.powerDriftSpeed * dt;
       }

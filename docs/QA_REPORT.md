@@ -1,5 +1,112 @@
 # SKY REAPER: QA playtest and balance report
 
+## Round 7 verification (HP gate, damage cap, gust arrow, desert paint, land-locked vehicles, citadel walls, boss lengths, jungle objective)
+
+Date: 2026-11-19 · Build: a fresh `vite build` of the current working tree (round-7 edits, uncommitted) into `%TEMP%\sr-qa-r7\dist`, served by `vite preview --port 5610` (stopped afterwards). Normal difficulty. 70 bot runs, a 10-cell godMode boss pass, a real-time GPU FPS pass (4 cells, Intel UHD, 75 Hz cap) and 20 screenshots (the ones cited below were read). Raw JSON: `%TEMP%\sr-qa-r7\out\`, screenshots: `%TEMP%\sr-qa-r7\shots\`. No test or bot changes this round.
+
+**Gates:**
+- `npx tsc --noEmit`: clean. `npm run typecheck:worker`: clean.
+- `node tests/i18n/check.mjs`: PASS (502 en / 502 fa, 36 signed numbers bidi-checked). No new strings this round.
+- Level sanity (`checkLevels` via Vite SSR, now including `checkLand`) at 540×960, 1138×640, 1366×768, 1920×1080: **0 errors, 0 warnings** in all 5 chapters. `checkCitadel`: 38 structures, 0 failures (max delay 4.84 s portrait, 1.57 s wide).
+- `npx playwright test` (temp config, port 5610): **13/13 passed** first run. `perf.spec`: 74.9 fps, worst frame 40.2 ms, 12 hazards at peak.
+- 0 page or console errors in every bot, boss, FPS and screenshot run.
+
+### Headline
+
+**Partly. The hard wall for a 0-upgrade player is ch4, not ch3. Upgraded players finish.**
+- 0-upgrade novice: ch1–2 8/8 wins with 0 deaths. **Ch3 fails 4/12** (seeds 1–6, both layouts). The 8 wins are grinds: 1–2 deaths, and the boss takes 71–138 s at escalation 3 (budget novice: 75–84 s, expert budget: 37–58 s). **Ch4 4/4 fail** (t 161–181), **ch5 4/4 fail** (t 97–182).
+- Budget novice (BALANCE_SPEC reference loadout): ch3 4/4, ch4 4/4, ch5 3/4 wins. Expert: 24/24 wins.
+- So someone who skips the shop clears ch3 about two times in three and then cannot pass ch4. Someone who buys the reference upgrades wins with about one death per chapter. Upgrades clearly matter from ch3 on.
+
+### Targets
+
+| # | setup | target | round 7 result | verdict |
+|---|---|---|---|---|
+| A1 | no-dodge, 0 upg, ch1 | ≥ 1 death | 2/2 wins, **0 deaths** (dmg 230 / 291) | miss (unchanged since R5) |
+| A1 | no-dodge, 0 upg, ch2 | game over 2/2 | 2/2 wins with **2 deaths** (dmg 502–507) | miss (R6: 1 of 2) |
+| A1 | (info) no-dodge ch3 | – | game over 2/2 at **t 52** (R6: t 43 / 56) | – |
+| A2 | novice, 0 upg, ch1 / ch2 | wins, 0–2 deaths | 8/8 wins, 0 deaths (dmg 14–79) | met |
+| A2 | novice, 0 upg, **ch3** | fails ≥ 3/4 | seeds 1–2: **1/4** (portrait s2 t 183). Seeds 3–6: **3/8** (portrait s4 t 191, portrait s5 t 161, wide s3 t 332 in the boss). Total **4/12**. Average deaths, with a fail counted as 3: **2.1** (budget: 1.0) | **miss** (soft wall) |
+| A2+ | novice, 0 upg, ch4 | fail | **4/4** (t 161–181, power 1–2) | met |
+| A2+ | novice, 0 upg, ch5 | fail | **4/4** (t 97–182, power 1–3) | met |
+| A3 | novice `--budget` ch3 / ch4 / ch5 | ≥ 3/4 wins, avg 1–3 deaths | ch3 4/4, avg **1.0** · ch4 4/4, avg **1.5** · ch5 3/4 (citadel wide s1 failed t 198), avg **1.5** | met |
+| A4 | expert, 0 upg, ch3–5 | wins, 0–1 deaths | 12/12 wins. 3 runs with 1 death (citadel ×3), the rest 0 | met |
+| A4b | expert `--budget` ch3–5 | – | 12/12 wins. 1 death in 1 run (desert wide s2) | met |
+| A5 | boss pass, godMode, power 4, `--budget` | phases ≥ 10 s, total 40–60 s, escalation ≤ 1 | totals **40.7–65.8 s**. Every phase ≥ 10 s. Out of range: **arctic wide 65.8 s** (P3 32.4 s, escalation 2); level agent measured 57.9 / 58.8 s. Pacific is in range now (43.9 / 44.9; R6 39.5). Jungle portrait P1 escalation 2 (26.5 s) | 9/10 |
+| A5g | phase gate | < 3 s per phase | max **2.97 s** (pacific wide P1); desert wide P1 0.68 s (R6 5.65 s) | 10/10 |
+| A6 | unavoidable hits (`minSafe ≤ 0`) | none for expert | expert 0 upg: 1 (citadel portrait s1) of 80 hits · expert budget: 0 of 49 · novice 0–3 per run | as round 6 |
+
+### Per-hit damage (bot hit logs; 0 upgrades = 100 hull + 40 shield = 140)
+
+| chapter | chapterDmg | average hit (novice 0 upg, per run) | max hit |
+|---|---|---|---|
+| pacific / jungle | 0.9 / 1.3 | 7–16 | 7–26 |
+| desert | 2.9 | 27.6–38.9 | **63** |
+| arctic | 3.2 | 29.4–34.3 | 63 |
+| citadel | 3.1 | 28.8–32.7 | 63 |
+
+- **R6-2 (cap / curve): resolved.** No 0-upgrade hit exceeded **63 = 45 % of 140**; 63 is the cap and is reached in every hard chapter. Two hits always leave the ship alive. Budget runs top out at 74.3 (desert, larger life pool), so the cap scales as intended.
+- The curve is flat across ch3–5 (about 30 per hit), not inverted as in round 6 (desert 40–75). The no-dodge bot still dies early in desert (t 52), but by volume of hits (15–16), not by 92–110 one-shots.
+
+### Wide vs portrait (R5-2)
+
+**Resolved.** End-of-run power, 0-upgrade novice desert: wide 2 / 3 / 1 / 3 / 3 / 3, portrait 3 / 1 / 4 / 1 / 1 / 2. Expert 0 upg, ch3–5: wide 3–5, portrait 3–5. In round 6, wide ended at 1–3 while portrait ended at 3–5. Fail rates no longer favour portrait: ch3 0-upgrade fails are 3 portrait, 1 wide.
+
+### Visual checks (screenshots read)
+
+- **Gust arrow (R6-6): resolved.** Desert t 44 (telegraph 0.25 s) and t 46 (push 0.55), wide and portrait. The arrow sits on the upwind (left) edge at about 46 % height and points downwind. It is clear of the top entry band and the HUD. In portrait it sits next to a fighter column at the left edge but does not hide it.
+- **Desert helicopters (R6-3): resolved.** Desert wide t 58: the two helicopters and the fighter vee are dark olive with a light rim and read clearly on sand and on rock patches.
+- **Arctic vehicles on the river (R6-4): resolved.** Arctic portrait t 96–108 and wide t 98–104: tanks and APCs stay on both banks, and only the destroyer is on the water. `checkLand` 0 errors at all widths.
+- **Citadel walls (R6-5): resolved.** Citadel wide t 40: the inner compound walls now run from the avenue kerb toward the runway, with an end cap at the runway, so they read as a gated wall. The outer segments run from the perimeter and stop about 110 px before the avenue, which reads as a gate opening rather than a floating bar. Cosmetic only.
+- **Jungle objective (R5-7): resolved.** "Destroy 2 bases or hangars" met in **6/6** jungle runs (0-upgrade novice 2–4 bases, no-dodge 3 / 3). Round 6: 0/4.
+
+### FPS (real time, Edge GPU, 75 Hz cap)
+
+- Citadel wide and arctic wide, early waves (t 60–95) and boss: average 75, minimum 1-s bucket 75, worst frame 14 ms (arctic boss 40 ms).
+- Late waves (godMode, t 110–185, wide): citadel 75.0 average / minimum 75 / worst 14 ms with 496 bullets; arctic 75.0 / 73 / 40 ms with 672 bullets.
+- The turbo bot saw up to **868** bullets at once in citadel wide (expert budget). The real-time run peaked lower, so this is not measured at its worst. No frame-rate problem was found.
+
+### Medals (level agent's open item)
+
+Victory scores against `medalScores` (wide uses the chapter's wide factor):
+- desert: 0-upgrade novice portrait 34–37 k (none; bronze 39 k), wide 26–33 k (bronze). Budget novice portrait bronze, wide silver. Expert budget portrait gold / silver, wide **ace** / silver.
+- arctic: budget novice silver; expert budget ace / gold.
+- citadel: budget novice silver–gold; expert budget gold.
+- Verdict: tiers separate skill and upgrades sensibly, so no change is needed. Desert wide (factor 0.65) runs about one tier more generous than portrait.
+
+### Round 6 and carried issues
+
+| # | status |
+|---|---|
+| R6-1 0-upgrade gate at ch3 | **partly resolved**: ch3 fails 4/12 (soft wall, long grind), ch4 and ch5 4/4 (hard wall). Budget 11/12 wins |
+| R6-2 damage curve / per-hit spikes | **resolved** (cap 45 %, ch3 ≈ ch4 ≈ ch5) |
+| R6-3 desert helicopter contrast | **resolved** |
+| R6-4 vehicles on the river | **resolved** |
+| R6-5 citadel wall bars | **resolved** |
+| R6-6 gust arrow placement | **resolved** |
+| R6-7 boss lengths | **mostly resolved**: 9/10 in 40–60 s; arctic wide 65.8 s on seed 1 |
+| R5-2 wide power | **resolved** |
+| R5-6 expert unavoidable hit | 1 sample (citadel portrait s1, 0-upgrade expert); 0 with budget |
+| R5-7 jungle objective | **resolved** (6/6) |
+
+### Round 7 issues
+
+**R7-1. Ch3 is a soft wall, not a hard one (owner: engine `WORLD_TUNING`). Severity: medium.**
+- **Evidence:** 4/12 0-upgrade fails. The 8 wins end on 1–2 deaths, and the boss runs 71–138 s at escalation 3.
+- **Options:**
+  - Accept it. ch4 stops every 0-upgrade run (8/8 across ch4–5), and a ch3 win at 0 upgrades still costs most of the lives.
+  - Or raise ch3 `chapterDmg` 2.9 → 3.0–3.1 (the combat agent's next knob), then re-run with ≥ 8 seeds. Budget ch3 is at 1.0 deaths, so there is room.
+
+**R7-2. Arctic wide boss 65.8 s on seed 1 (owner: bosses `ice_dreadnought.ts`). Severity: low.**
+- **Evidence:** P3 32.4 s at escalation 2. Level agent measured 57.9 / 58.8 s on two seeds, so this is near the top edge with noise.
+- **Suggestion:** HP ×2.1 → 2.0, or phaseAt P3 0.25 → 0.22.
+
+**R7-3. A1 no-dodge targets still missed in ch1–2 (owner: engine). Severity: low.**
+- ch1: 0 deaths. ch2: survives on its last life.
+- This has been carried since round 5. Only change it if the "a player who never dodges loses in ch2" goal still stands.
+
+**R7-4 (info). The expert budget bot reaches 868 bullets on screen in citadel wide.** The real-time FPS check held 75 at 496–672 bullets. If the 0-upgrade or budget peak (746–815) shows up on low-end mobile, it is the first place to trim.
+
 ## Round 6 verification (citadel redesign, river boats, biome enemy colours, desert gusts, R5 balance, Farsi signs)
 
 Date: 2026-11-19 · Build: a fresh `vite build` of the current working tree (round-6 edits, uncommitted) into `%TEMP%\sr-qa-r6\dist`, served by `vite preview --port 5510` (stopped afterwards). Normal difficulty. About 70 bot runs, a 10-cell godMode boss pass, a real-time GPU FPS pass (8 cells, Intel UHD, 75 Hz cap) and about 60 screenshots, all read. Raw JSON and screenshots: `%TEMP%\sr-qa-r6\out\` and `%TEMP%\sr-qa-r6\shots\`.

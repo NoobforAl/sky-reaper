@@ -5,7 +5,7 @@
  *   entry (parts invulnerable, rig glides in)  ->  phase 1 (core shielded)  ->  phase 2 (core open)  ->  phase 3
  *   -> core destroyed: bossDefeated + bullet clear + chain explosions + drops -> `done` after DEFEAT_SEC
  *   (the Engine sees `done`, adds the boss bonus and calls completeChapter(); if it does not, we call it ourselves).
- * Phases come from total live part HP vs initial (thresholds in BOSS_TUNING.phaseAt). A phase change emits `bossPhase`
+ * Phases come from total live part HP vs initial (thresholds in BOSS_TUNING.phaseAt, per boss `phaseAt`). A phase change emits `bossPhase`
  * (Engine: clear bullets + flash + shake + sfx; we also clear/flash/shake so it works without the Engine hook),
  * cancels running patterns, grants a short breather and drops a reward pickup.
  */
@@ -195,6 +195,13 @@ export abstract class BossBase implements BossController {
   protected coreShieldExtra(): boolean {
     return false;
   }
+
+  /**
+   * Round 7 (QA R6-7): total-HP fractions where phase 2 / 3 start for THIS boss (default BOSS_TUNING.phaseAt). A boss
+   * whose phases lose DPS very unevenly (e.g. arctic wide P3, desert wide P1) moves HP between phases here instead of
+   * changing its total.
+   */
+  protected phaseAt: readonly [number, number] = BOSS_TUNING.phaseAt;
 
   /** hpMul: per-boss HP trim on top of BOSS_TUNING (ch1 stays gentle, see LEVEL_NOTES) */
   constructor(bossId: string, world: WorldAPI, hpMul = 1) {
@@ -461,7 +468,7 @@ export abstract class BossBase implements BossController {
 
     // ---- phase from HP, gated by the minimum phase length (one phase at a time)
     const frac = this.hud().hp / Math.max(1, this.initialTotal);
-    let want = frac <= BOSS_TUNING.phaseAt[1] ? 3 : frac <= BOSS_TUNING.phaseAt[0] ? 2 : 1;
+    let want = frac <= this.phaseAt[1] ? 3 : frac <= this.phaseAt[0] ? 2 : 1;
     // a player focusing the core moves the fight on instead of stalling against its floor
     const c0 = this.core;
     if (c0 && !c0.dead && c0.e.hp <= c0.maxHp * BOSS_TUNING.coreFloor && this.phase < this.phases) want = Math.max(want, this.phase + 1);

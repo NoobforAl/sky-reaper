@@ -69,7 +69,8 @@ const list: PatternDef[] = [
   { id: "ring_double", kind: "burst", aim: "none", bullet: makeBullet("orb_cyan", { speed: 120 }), count: 12, spreadDeg: 330, shots: 2, gapMs: 300, telegraphMs: 650, sfx: "shot_spread" },
   { id: "spiral_double", kind: "spiral", bullet: makeBullet("orb", { speed: 125 }), count: 4, shots: 18, gapMs: 110, rotationDeg: 13, telegraphMs: 650, sfx: "shot_spread" },
   { id: "burst5_aimed", kind: "burst", bullet: makeBullet("needle", { speed: 240 }), count: 1, shots: 5, gapMs: 110, telegraphMs: 300, sfx: "shot_vulcan" },
-  { id: "burst_fan3", kind: "burst", bullet: makeBullet("small_red", { speed: 180 }), count: 3, spreadDeg: 30, shots: 3, gapMs: 220, sfx: "shot_spread" },
+  // round 7 (R5-6): 250 ms charge telegraph; several Hornet Aces on wide fired unannounced overlapping fans (expert hit, citadel wide)
+  { id: "burst_fan3", kind: "burst", bullet: makeBullet("small_red", { speed: 180 }), count: 3, spreadDeg: 30, shots: 3, gapMs: 220, telegraphMs: 250, sfx: "shot_spread" },
   { id: "needle_lead", kind: "aimed", aim: "lead", bullet: makeBullet("needle", { speed: 300 }), count: 1, telegraphMs: 250, sfx: "shot_laser" },
   { id: "big_orb_slow", kind: "aimed", bullet: makeBullet("big", { speed: 95, damage: 20 }), count: 3, spreadDeg: 40, telegraphMs: 600, sfx: "rocket" },
   { id: "homing_pair", kind: "homing", bullet: makeBullet("missile", { speed: 160, turnRate: 90 }), count: 2, spreadDeg: 70, telegraphMs: 800 },

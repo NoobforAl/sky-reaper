@@ -15,7 +15,10 @@ export class CarrierBoss extends BossBase {
   constructor(world: WorldAPI) {
     // round 5 B1: 0.85 -> 1.6; round 6 (QA R5-3): portrait boss pass ran 37.3 s (< 40 s). +0.1 was not enough (37.5 s:
     // P1 / P2 sit on the 10 s phase floor, only P3 grows; 1.95 gave 38.6 s) -> 2.2 on the 480 field
-    super("carrier", world, WIDE ? 1.6 : 2.2);
+    // round 7 (QA R6-7): portrait ran 39.5 s (just under 40) -> 2.45; wide phase 1 was gate-held up to 4.3 s -> P1 holds
+    // 35 % of the HP on wide (phaseAt [0.65, 0.4])
+    super("carrier", world, WIDE ? 1.6 : 2.45);
+    if (WIDE) this.phaseAt = [0.65, 0.4];
     this.holdY = 250;
     this.entrySec = 4;
     this.y = -320;

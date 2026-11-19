@@ -46,7 +46,7 @@ function segLevel(r: number): number {
 /** score popup fade / near-player dimming */
 /**
  * round 6 item 14 gust telegraph: sand / snow streaks crossing the screen in the gust direction (fixed pool, cosmetic,
- * render-clock only), a HUD-style arrow at the top centre, and a translucent veil scaled by gust strength.
+ * render-clock only), a HUD-style arrow at the upwind side edge, and a translucent veil scaled by gust strength.
  */
 const WIND_FX = {
   streaks: 44,
@@ -59,11 +59,19 @@ const WIND_FX = {
   lenMax: 64,
   /** veil alpha at full gust (desert; snow uses 0.8x) */
   veilMax: 0.2,
-  arrowY: 92,
+  /**
+   * round 7 (QA R6-6): the arrow moved out of the enemy entry band (was top centre, y 92) to the upwind side edge at
+   * mid-height (arrowYFrac of GAME_H, arrowEdge units in from the edge), pointing the way the gust pushes.
+   */
+  arrowYFrac: 0.46,
+  arrowEdge: 58,
   arrowW: 46,
-  /** the arrow fades to this alpha when the player flies under it */
+  /** the arrow fades to this alpha when the player or an enemy is under it */
   arrowNearAlpha: 0.25,
   arrowNearDist: 56,
+  /** half extents of the box tested for enemies under the arrow */
+  arrowBoxHalfW: 46,
+  arrowBoxHalfH: 30,
 } as const;
 
 const POPUP_NEAR = 70;
@@ -484,10 +492,24 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     // arrow: blinks during the telegraph, solid (pulsing) during the gust; fades when the player is right under it
     let a = v.tele ? (Math.floor(this.wsClock * 6) % 2 === 0 ? 0.95 : 0.25) : 0.6 + 0.3 * v.s + 0.1 * Math.sin(this.wsClock * 10);
     const p = w.pc.state;
-    const cx = GAME_W / 2;
-    const cy = F.arrowY;
-    if (p.alive && Math.abs(p.y - cy) < F.arrowNearDist && Math.abs(p.x - cx) < F.arrowW + F.arrowNearDist * 0.5) a *= F.arrowNearAlpha;
     const d = v.dir;
+    // upwind edge: a gust pushing right (d = 1) is shown on the left edge, so the arrow never covers where you are pushed
+    const cx = d >= 0 ? F.arrowEdge : GAME_W - F.arrowEdge;
+    const cy = Math.round(GAME_H * F.arrowYFrac);
+    let near = p.alive && Math.abs(p.y - cy) < F.arrowNearDist && Math.abs(p.x - cx) < F.arrowW + F.arrowNearDist * 0.5;
+    if (!near) {
+      const en = w.enemyPool.items;
+      const bw = F.arrowBoxHalfW;
+      const bh = F.arrowBoxHalfH;
+      for (let i = 0; i < en.length; i++) {
+        const e = en[i]!;
+        if (e.alive && Math.abs(e.x - cx) < bw + e.hw && Math.abs(e.y - cy) < bh + e.hh) {
+          near = true;
+          break;
+        }
+      }
+    }
+    if (near) a *= F.arrowNearAlpha;
     const half = F.arrowW / 2;
     const col = snow ? this.col(220, 235, 255) : this.col(255, 196, 70);
     // dark outline then the fill

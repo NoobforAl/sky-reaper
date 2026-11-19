@@ -5,7 +5,7 @@
  *  P3  core: rotating 8-way cross | frost carpet walking at you | cannons: 7-fans | rams more often
  *  Parts change attacks: engines destroyed -> slower, no mines; drill destroyed -> no ram, core needles instead.
  */
-import { GAME_W, type WorldAPI } from "../contracts";
+import { GAME_W, WIDE, type WorldAPI } from "../contracts";
 import { tr } from "../levels/i18n";
 import { BP } from "./attacks";
 import { BossBase, roam, type PartRT } from "./framework";
@@ -16,7 +16,11 @@ export class IceDreadnoughtBoss extends BossBase {
   private ram = 0;
 
   constructor(world: WorldAPI) {
-    super("ice_dreadnought", world, 2.2); // round 5 B1: 0.85 -> 2.2
+    // round 5 B1: 0.85 -> 2.2. Round 7 (QA R6-7): on wide fields phase 3 ran 36.6 s (total 61.8 s, ENRAGED II) while P2
+    // was gate-held: the boss loses about half its DPS in P3 on wide (faster roam, rams, frost carpet), so wide P3 keeps
+    // 25 % of the HP and P1 32 % (phaseAt [0.68, 0.25]; default [0.72, 0.42]), wide HP 2.2 -> 2.1 -> 2.0 (R7-2)
+    super("ice_dreadnought", world, WIDE ? 2.0 : 2.2);
+    if (WIDE) this.phaseAt = [0.68, 0.25];
     this.holdY = 200;
     this.entrySec = 4;
     this.addPart("hull", "hull", 0, 0);

@@ -20,6 +20,8 @@ export function desert(): ChapterScript {
   tl.at(9).stream("interceptor", 3, C, 600);
   tl.at(12).spawns("aa_turret", [LC, RC]);
   tl.at(14).line("fighter_basic", 5, C, { dx: 70 });
+  // round 7 (R6-1): mid-wave pressure + the first bomb check (2 heavy tanks; bomb pickup at t 21 and t 25)
+  tl.at(16).stream("interceptor", 3, LC, 500);
 
   // ---- oil field
   tl.at(18).banner("OIL FIELD", "TANKS BURN BRIGHT", 2000, { key: "wave.desert.oilField", subKey: "wave.desert.oilField.sub" });
@@ -27,10 +29,14 @@ export function desert(): ChapterScript {
   tl.at(19.5).spawns("oil_tank", [C], undefined, -160).spawn("aa_turret", C, undefined, -60);
   tl.at(21).pickup("bomb", C);
   tl.at(22).vee("fighter_basic", 5, LC, { y: -60 });
+  tl.at(25).pickup("bomb", RC);
+  tl.at(26.5).column("tank_heavy", 2, RC + 20, { dy: 90 });
   tl.at(25).spawn("sam_site", R - 40).spawn("missile_launcher", L + 40, undefined, -90);
   tl.at(28).stream("fighter_basic", 6, R, 330);
   tl.at(31).spawn("bomber", C);
   tl.at(33).spawns("tank_heavy", [LC]).pickup("power", RC);
+  // round 7 (R6-1): a short elite wing before the sandstorm banner
+  tl.at(35).vee("fighter_basic_elite", 3, RC, { dx: 50 });
 
   // ---- first sandstorm
   tl.at(37).banner("SANDSTORM", "WATCH THE CROSSWIND", 2200, { key: "wave.desert.sandstorm", subKey: "wave.desert.sandstorm.sub" }).weather("sandstorm", 0.55).tutorial("wind");
@@ -46,18 +52,23 @@ export function desert(): ChapterScript {
   tl.at(48.5).gust(-1, 3, 0.6);
   tl.at(53).gust(1, 3, 0.64);
   tl.at(56).weather("none", 0);
+  // round 7 (R6-1): second wave right after the last gust (t 53-56) instead of a 4 s lull
+  tl.at(57.5).vee("fighter_basic_elite", 5, C, { dx: 44 });
   // round 5 balance P6: the t 57 shield pickup is gone (ch3+ keeps only the pre-boss shield)
 
   // ---- fortified convoy
   tl.at(60).banner("ARMOURED CONVOY", undefined, 2000, { key: "wave.desert.armouredConvoy" });
   tl.at(61).convoy(LC - 20, 6, 1300);
   tl.at(63).vee("fighter_basic", 5, RC);
+  tl.at(64.5).spawns("tank_heavy", [R - 40]);
   tl.at(66).spawns("interceptor", [R - 30, RC]);
   tl.at(68).pickup("bomb", LC);
   tl.at(70).spawn("missile_carrier", RC);
+  tl.at(71.5).stream("interceptor", 4, L, 450);
   tl.at(73).stream("fighter_basic_elite", 5, R, 340);
   tl.at(76).spawns("tank_heavy", [RC]).spawn("aa_turret", R - 30, undefined, -80);
   tl.at(79).line("fighter_basic", 5, C, { dx: 70 });
+  tl.at(81.5).arc("fighter_basic", 7, C, { dx: 130 });
 
   // ---- desert base
   tl.at(84).banner("FORWARD AIRBASE", "HIT THE HANGARS BEFORE THEY LAUNCH", 2200, { key: "wave.desert.airbase", subKey: "wave.desert.airbase.sub" });
@@ -69,9 +80,12 @@ export function desert(): ChapterScript {
   tl.at(88).pickup("bomb", 120).pickup("bomb", R - 70);
   tl.at(89).stream("fighter_basic", 5, 120, 500);
   tl.at(92).spawns("interceptor", [LC, RC]);
+  tl.at(93).column("tank_heavy", 2, R - 50, { dy: 90 });
   tl.at(95).spawns("missile_launcher", [C]);
   tl.at(97).vee("fighter_heavy", 3, C, { dx: 70, dy: 40 });
+  tl.at(99).spawns("helicopter", [LC, RC]);
   tl.at(101).stream("fighter_basic", 6, L, 300).stream("fighter_basic_elite", 5, R, 320);
+  tl.at(105).vee("fighter_heavy", 3, C, { dx: 70, dy: 40 });
   // round 5 balance P5: the t 105 power pickup is gone (2 scripted: t 33 and t 184)
 
   // ---- sandstorm raid (special encounter)
@@ -98,17 +112,22 @@ export function desert(): ChapterScript {
   // ---- run-in to the fortress
   tl.at(143).banner("WAVE 6", "ARMOUR SCREEN", 2000, { key: "banner.wave", params: { n: 6 }, subKey: "wave.desert.armourScreen.sub" });
   tl.at(144).line("sand_crawler", 5, C, { dx: 80 });
+  // round 7 (R6-1): heavy tanks behind the crawler screen, bomb pickup first
+  tl.at(145).pickup("bomb", C + 30);
+  tl.at(147.5).column("tank_heavy", 2, C + 30, { dy: 90 });
   tl.at(146).stream("interceptor", 4, R, 500);
   tl.at(149).spawns("oil_tank", [L + 20, L + 70]).spawns("missile_launcher", [R - 40]);
   tl.at(152).arc("fighter_basic_elite", 7, C, { dx: 140 });
   tl.at(155).spawn("helicopter", LC).spawn("helicopter", RC).pickup("bomb", C);
   tl.at(158).column("armored_vehicle", 4, R - 40, { dy: 56 });
   tl.at(161).vee("fighter_heavy", 3, LC, { dx: 70, dy: 40 }).spawn("shield_drone", LC, undefined, -150);
+  tl.at(163.5).stream("interceptor", 4, R, 420);
   tl.at(165).spawns("tank_heavy", [L + 40, R - 40]).spawns("sam_site", [C]);
   tl.at(168).stream("fighter_basic", 6, L, 280).stream("fighter_basic", 6, R, 280);
   tl.at(172).spawn("missile_carrier", LC).spawn("bomber", RC);
   tl.at(176).line("fighter_basic_elite", 6, C, { dx: 64 });
   tl.at(180).spawns("interceptor", [L, C, R]);
+  tl.at(182).vee("fighter_basic", 5, C, { dx: 44 });
   tl.at(184).pickup("power", LC).pickup("bomb", RC).pickup("shield", C);
   tl.at(186).weather("sandstorm", 0.35);
   tl.at(186.5).gust(-1, 2, 0.55);

@@ -3,9 +3,21 @@
  * River gunboats (snapped onto the river by the runner), hidden bases, AA nests, helicopter side ambush, road convoy.
  */
 import type { ChapterScript } from "../types";
+import { WIDE } from "../../contracts";
 import { LANES, TL, medals } from "../builders";
 
 const { L, C, R, LC, RC } = LANES;
+/**
+ * round 7 (R5-7): jungle bases / hangars fall to ONE bomb (180 / 160 HP x 0.33 -> 59 / 53; a bomb does 74, 63+ at the
+ * splash edge). Bot probes showed the novice arriving with 0-1 bombs left (they go to tanks and AA on the way), so
+ * 3-bomb targets were out of reach; the chapter-2 lesson is "a bomb kills a building".
+ */
+const BASE_OPTS = { hpScale: 0.33 };
+/**
+ * round 7 (R5-7): x of the base + hangar column: just right of the river on the 480 field; on wide fields the lanes
+ * spread x3, so the authored x is pulled in to keep the column next to the centre lane (still on the right bank)
+ */
+const BX = WIDE ? C + 25 : C + 70;
 
 export function jungle(): ChapterScript {
   const tl = new TL();
@@ -39,13 +51,17 @@ export function jungle(): ChapterScript {
   // QA R4-4 / R5-7 (round 6): the first base pair moved in from the edges toward the centre (the river runs left of
   // centre here, so both sit on the right bank: base just right of centre, hangar beside it), with a bomb dropped in
   // the base's lane ~2 s before; the AA guns moved off the water (one on the left bank, one behind the base)
-  tl.at(44).pickup("bomb", C + 60);
+  tl.at(44).pickup("bomb", BX);
   tl.at(45).banner("HIDDEN BASE", "BOMB THE HANGARS", 2200, { key: "wave.jungle.hiddenBase", subKey: "wave.jungle.hiddenBase.sub" });
-  tl.at(46).spawn("military_base", C + 60).spawn("hangar", R + 20, undefined, -60);
-  tl.at(46.5).spawn("aa_turret", L + 10).spawn("aa_turret", C + 60, undefined, -150);
+  // round 7 (QA R5-7: "destroy 2 bases or hangars" was 0/4 in bot runs): base and hangar now stand in ONE column on the
+  // right bank (hangar right behind the base, the lane the bomb pickups lead into) and fall to one bomb (BASE_OPTS);
+  // the AA gun that sat behind the base moved to the edge
+  tl.at(46).spawn("military_base", BX, BASE_OPTS).spawn("hangar", BX, BASE_OPTS, -190);
+  tl.at(46.5).spawn("aa_turret", L + 10).spawn("aa_turret", R - 10, undefined, -110);
   tl.at(48).pickup("bomb", LC).pickup("bomb", RC);
   tl.at(49).vee("fighter_basic", 5, C, { y: -80 });
-  tl.at(52).spawn("radar_station", C, undefined, -60).spawns("tank_light", [LC, RC]);
+  // round 7 (R6-4): land vehicles moved off the river's path (sanity.ts checkLand)
+  tl.at(52).spawn("radar_station", C, undefined, -60).spawns("tank_light", [C + 50, RC]);
   tl.at(55).stream("fighter_basic", 6, R, 350);
   tl.at(58).spawn("missile_carrier", LC);
   tl.at(60).spawn("gunboat", C);
@@ -61,7 +77,11 @@ export function jungle(): ChapterScript {
   tl.at(77).spawn("gunboat", C).spawn("gunboat", C, undefined, -120);
   tl.at(79).line("fighter_basic", 5, C, { dx: 70 });
   tl.at(83).spawns("tank_heavy", [L + 30]).spawns("aa_turret", [R - 30]);
+  // round 7 (R5-7): a third chance for the "2 bases or hangars" objective between the two strongholds: a supply hangar
+  // on the left bank (the river swings right here), bomb pickup in its lane 1.5 s before
+  tl.at(85.5).pickup("bomb", LC);
   tl.at(86).stream("interceptor", 3, RC, 600);
+  tl.at(87).spawn("hangar", LC, BASE_OPTS);
 
   // ---- bombers over the river
   tl.at(91).banner("WAVE 3", "BOMBER FORMATION", 2000, { key: "banner.wave", params: { n: 3 }, subKey: "wave.jungle.bomberFormation.sub" });
@@ -79,16 +99,17 @@ export function jungle(): ChapterScript {
   // QA R4-4: the second base pair sits in the inner lanes (LC / RC) where the player flies, with a bomb restock 2 s
   // before it; the AA nests moved out to the banks (they used to spawn on top of the base and hangar, #7)
   tl.at(117).pickup("bomb", LC).pickup("bomb", RC);
-  tl.at(118).pickup("bomb", C);
+  tl.at(118).pickup("bomb", BX);
   tl.at(119).banner("JUNGLE STRONGHOLD", "BOMB THE BASES", 2000, { key: "wave.jungle.stronghold", subKey: "wave.jungle.stronghold.sub" });
   // round 6: the hangar sat on the river at LC; it now stands beside the base on the right bank
-  tl.at(120).spawn("military_base", C + 60).spawn("hangar", R + 15, undefined, -80);
-  tl.at(120.5).spawns("missile_launcher", [C]).spawn("aa_turret", L + 10).spawn("aa_turret", C + 60, undefined, -170);
-  tl.at(121).spawn("radar_station", R - 60, undefined, -170);
+  // round 7 (QA R5-7): same column layout as the first base (hangar behind the base, one bomb each)
+  tl.at(120).spawn("military_base", BX, BASE_OPTS).spawn("hangar", BX, BASE_OPTS, -190);
+  tl.at(120.5).spawns("missile_launcher", [C]).spawn("aa_turret", L + 10).spawn("aa_turret", R - 10, undefined, -110);
+  tl.at(121).spawn("radar_station", R - 20, undefined, -260);
   tl.at(122).pickup("bomb", C).pickup("bomb", LC);
   tl.at(124).vee("fighter_basic", 5, C, { y: -60 });
   tl.at(128).stream("fighter_basic", 6, L, 320).stream("fighter_basic", 6, R, 320);
-  tl.at(132).spawns("tank_heavy", [LC, RC]);
+  tl.at(132).spawns("tank_heavy", [L - 10, RC]);
   tl.at(134).spawns("interceptor", [L, R]);
   // round 5 balance P5: the t 137 power pickup is gone (3 scripted power-ups left)
   tl.at(138).spawn("gunboat", C).spawn("gunboat", C, undefined, -120);
@@ -102,7 +123,7 @@ export function jungle(): ChapterScript {
   tl.at(155).spawns("aa_turret", [L, C, R]);
   tl.at(158).stream("interceptor", 4, C, 500);
   tl.at(161).spawn("bomber", LC).spawn("bomber", RC, undefined, -110);
-  tl.at(164).column("tank_light", 4, R - 30, { dy: 54 }).pickup("bomb", RC);
+  tl.at(164).column("tank_light", 4, R + 30, { dy: 54 }).pickup("bomb", RC);
   tl.at(167).arc("fighter_basic", 7, C, { dx: 140 });
   tl.at(171).spawns("gunboat", [C]).spawn("missile_carrier", LC);
   tl.at(175).vee("fighter_heavy", 3, C, { dx: 70, dy: 40 });

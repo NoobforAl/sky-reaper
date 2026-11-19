@@ -94,12 +94,20 @@ async function applyBudget(page, chapterId) {
 
 /** --chdmg=a,b,c,d,e / --sustain=... / --powermul=...: per-chapter balance tables (window.__skyBalance, src/core/world.ts) */
 const numList = (v) => (v ? v.split(",").map(Number) : undefined);
-const BALANCE = { chapterDmg: numList(args.chdmg), sustainDropMul: numList(args.sustain), powerDropMul: numList(args.powermul) };
+const BALANCE = {
+  chapterDmg: numList(args.chdmg),
+  sustainDropMul: numList(args.sustain),
+  powerDropMul: numList(args.powermul),
+  // round 7 HP gate (WORLD_TUNING.chapterHp / chapterHpLight): --chhp=... --chhplight=... --chhpground=...
+  chapterHp: numList(args.chhp),
+  chapterHpLight: numList(args.chhplight),
+  chapterHpGround: numList(args.chhpground),
+};
 
 async function startChapter(page, chapterId, params, botOpts) {
   await applyBudget(page, chapterId);
   await page.evaluate((b) => {
-    window.__skyBalance = b.chapterDmg || b.sustainDropMul || b.powerDropMul ? b : undefined;
+    window.__skyBalance = Object.values(b).some((v) => v) ? b : undefined;
   }, BALANCE);
   await page.evaluate(([id, p]) => window.__sky.goto("game", { chapterId: id, ...p }), [chapterId, params]);
   await page.waitForFunction(() => !!window.__sky?.game?.world, null, { timeout: 20000 });

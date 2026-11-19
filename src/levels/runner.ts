@@ -2,10 +2,10 @@
  * LevelRunner: fires timeline events, runs formations (with stagger), weather + wind gusts, tutorial hints.
  * Called once per sim step by the Engine (and in 0.25 s chunks by World.fastForward).
  */
-import { DESIGN_W, GAME_W, PIXEL_SCALE, PICKUP_KINDS, WIDE, X_SCALE, type ChapterDef, type EnemyDef, type EnemySpawnOpts, type LevelEvent, type LevelRunner, type PickupKind, type WorldAPI } from "../contracts";
+import { DESIGN_W, GAME_H, GAME_W, PIXEL_SCALE, PICKUP_KINDS, WIDE, X_SCALE, type ChapterDef, type Enemy, type EnemyDef, type EnemySpawnOpts, type LevelEvent, type LevelRunner, type PickupKind, type WorldAPI } from "../contracts";
 import { enemySystem } from "../enemies";
 import { BiomeBackground, CitadelLayout, riverX } from "./backgrounds";
-import { isRiverBoat, laneHalf, NAVAL, riverFollowShift, riverSpawnX } from "./naval";
+import { isLandMover, isRiverBoat, landBankShift, landHalf, landOnWater, landSpawnX, laneHalf, NAVAL, riverFollowShift, riverSpawnX } from "./naval";
 import { formationSlot } from "./builders";
 import { bannerText, type BannerI18n } from "./i18n";
 import { boxFor, boxesOverlap, OVERLAP_WINDOW, type SpawnBox } from "./spacing";
@@ -86,7 +86,7 @@ interface Pending {
 const BOMB_HINTS = new Set(["bomb_ground", "legend", "immune"]);
 
 /** a background set-piece in both spaces (authored cue + live x, world-y span) */
-interface LiveFeature {
+export interface LiveFeature {
   cue: FeatureCue;
   wy0: number;
   wy1: number;
@@ -107,7 +107,7 @@ export function scrollSpeedAt(def: ChapterDef, t: number): number {
 }
 
 /** live features of a chapter (authored cue mapped to the live field + world-y span) */
-function buildFeatures(script: ChapterScript, S: (t: number) => number): LiveFeature[] {
+export function buildFeatures(script: ChapterScript, S: (t: number) => number): LiveFeature[] {
   return script.features.map((f) => {
     const x = mapX(f.x);
     const mx = GAME_W - x;
@@ -137,6 +137,49 @@ function placeAnchor(features: LiveFeature[], S: (t: number) => number, enemy: s
     }
   }
   return { x: mapX(x), tied: null };
+}
+
+/**
+ * Round 7 (R6-4): is (x, wy) on the drawn surface of a road / rail / bridge set-piece (or its wide mirror twin)? Land
+ * vehicles there may cross the river (the set-piece is drawn over the water). Narrower than `onFeature` (citadel lanes).
+ */
+export function onRoad(features: LiveFeature[], x: number, wy: number): boolean {
+  for (let i = 0; i < features.length; i++) {
+    const f = features[i]!;
+    if (f.cue.kind === "runway" || wy < f.wy0 - 30 || wy > f.wy1 + 30) continue;
+    const hw = roadHalf(f);
+    if (Math.abs(x - f.x) < hw || (f.mirrorX !== null && Math.abs(x - f.mirrorX) < hw)) return true;
+  }
+  return false;
+}
+
+/** half width of the drawn surface of a road / rail (24) or bridge (62) set-piece, for land vehicles */
+function roadHalf(f: LiveFeature): number {
+  return f.cue.kind === "bridge" ? 62 : 24;
+}
+
+/**
+ * Round 7 (R6-4): bank guard step for a land vehicle of half extent `half` at (x, wy): 0 when it is dry or its centre is
+ * on a road / rail / bridge surface; a vehicle touching a set-piece over the water is pulled back onto its surface
+ * (convoy outriders drive along the causeway instead of off it); anything else wet is put back on its river bank.
+ * Shared by ChapterRunner.keepOnLand and sanity.ts checkLand. No allocation.
+ */
+export function landGuardShift(biome: string, features: LiveFeature[], x: number, wy: number, half: number): number {
+  if (landOnWater(biome, x, wy, half) <= 0) return 0;
+  for (let i = 0; i < features.length; i++) {
+    const f = features[i]!;
+    if (f.cue.kind === "runway" || wy < f.wy0 - 30 || wy > f.wy1 + 30) continue;
+    const hw = roadHalf(f);
+    for (let k = 0; k < 2; k++) {
+      const fx = k === 0 ? f.x : f.mirrorX;
+      if (fx === null) continue;
+      const dx = x - fx;
+      if (Math.abs(dx) >= hw + half) continue;
+      if (Math.abs(dx) <= hw) return 0;
+      return (dx > 0 ? fx + hw : fx - hw) - x;
+    }
+  }
+  return landBankShift(biome, x, wy, half);
 }
 
 /** boats in river biomes spawn on the river (see ChapterRunner.spawn / naval.ts): spacing uses that x */
@@ -271,6 +314,8 @@ export class ChapterRunner implements LevelRunner {
   }
 
   private features: LiveFeature[];
+  /** round 7: (x, wy) on a road / rail surface? (landSpawnX callback, made once) */
+  private readonly roadAt = (x: number, wy: number): boolean => onRoad(this.features, x, wy);
   private scrollAt: (t: number) => number;
   /** round 6: citadel base layout (structure plots + drive lanes), shared with the background */
   readonly citadel: CitadelLayout | null;
@@ -328,7 +373,11 @@ export class ChapterRunner implements LevelRunner {
     const biome = this.chapter.biome;
     for (let i = 0; i < list.length; i++) {
       const e = list[i]!;
-      if (!e.alive || e.bossId || !NAVAL.has(e.def.id)) continue;
+      if (!e.alive || e.bossId) continue;
+      if (!NAVAL.has(e.def.id)) {
+        if (e.def.layer === "ground") this.keepOnLand(e, world.scrollY - e.y);
+        continue;
+      }
       const wy = world.scrollY - e.y;
       const cx = riverX(wy);
       const data = e.data as { rcx?: number; mv?: { x0?: number } };
@@ -339,6 +388,29 @@ export class ChapterRunner implements LevelRunner {
       e.x += shift;
       const mv = data.mv;
       if (mv && typeof mv.x0 === "number") mv.x0 += shift;
+    }
+  }
+
+  /**
+   * Round 7 (QA R6-4): bank guard for land vehicles in river biomes (landGuardShift). A moving ground unit that reaches
+   * the drawn water off a road / rail surface is put back on its bank (or on the causeway it drove off); a diagonal
+   * mover also turns back (its heading lives in `data.mv.heading`, src/enemies/movement.ts) and a sine mover's weave base moves with it.
+   * Authored paths are kept dry by sanity.ts checkLand(); this catches wide copies and pushes. No allocation.
+   */
+  private keepOnLand(e: Enemy, wy: number): void {
+    const id = e.def.id;
+    if (!isLandMover(this.chapter.biome, id)) return;
+    if (e.y < -60 || e.y > GAME_H + 60) return;
+    const shift = landGuardShift(this.chapter.biome, this.features, e.x, wy, landHalf(id));
+    if (shift === 0) return;
+    e.x += shift;
+    const mv = (e.data as { mv?: { x0?: number; heading?: number } }).mv;
+    if (!mv) return;
+    if (typeof mv.x0 === "number" && e.def.movement.kind === "sine") mv.x0 += shift;
+    if (typeof mv.heading === "number" && e.def.movement.kind === "diagonal") {
+      // heading toward the water (cos sign against the shift) -> mirror it
+      const vx = Math.cos((mv.heading * Math.PI) / 180);
+      if (vx * shift < 0) mv.heading = 180 - mv.heading;
     }
   }
 
@@ -544,6 +616,9 @@ export class ChapterRunner implements LevelRunner {
     }
     // boats ride the jungle river / the arctic open-water lead (followed every step in followRiver)
     if (isRiverBoat(this.chapter.biome, enemy)) sx = riverSpawnX(this.chapter.biome, enemy, x, world.scrollY - sy);
+    // round 7 (R6-4): land vehicles off a road / rail start on a column whose path stays dry (naval.ts landSpawnX)
+    else if (this.riverBoats && !onRoad(this.features, sx, world.scrollY - sy) && isLandMover(this.chapter.biome, enemy))
+      sx = landSpawnX(this.chapter.biome, enemy, sx, sy, world.scrollY - sy, world.scrollSpeed, opts?.dir ?? 1, this.roadAt);
     world.spawnEnemy(enemy, sx, sy, opts);
   }
 
