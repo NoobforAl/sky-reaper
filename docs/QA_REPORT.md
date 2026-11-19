@@ -1,5 +1,164 @@
 # SKY REAPER: QA playtest and balance report
 
+## Round 5 verification (popups, separation, BALANCE_SPEC, bomber perf, enemy animations, Farsi)
+
+Date: 2026-11-19 · Build: a fresh `vite build` of the committed tree (`0eba70b`, unchanged in the working tree) into a scratch folder, served by `vite preview --port 5410`. The bots ran on normal difficulty, in both layouts, with the seeds listed in BALANCE_SPEC §11. That is 66 bot runs plus a 14-run godMode boss pass, followed by a real-time GPU FPS pass (20 cells) and a screenshot pass (gameplay in 5 chapters × 2 layouts, bomber wave, popups on and off, and 10 UI screens × 2 languages × 2 layouts).
+
+**Gates:**
+- `npx tsc --noEmit`: clean.
+- `npm run typecheck:worker`: clean.
+- `node tests/i18n/check.mjs`: PASS (501 en / 501 fa).
+- `npx playwright test`: **13/13 passed**, including the new `perf.spec.ts`.
+- 0 page or console errors in every bot, boss, FPS and screenshot run.
+- No harness changes were needed this round. `tests/qa/bot.js` and the e2e specs are unchanged.
+
+### Headline
+
+The user's complaint is **not fixed**. A 0-upgrade novice bot clears **every** chapter: ch3 4/4 wins with 0 deaths, ch4 2/2 wins, ch5 2/2 wins with 1–2 deaths. Pressure did go up compared with round 4: novice damage in ch3 is 125–293, up from 21–107. The gap to a game over is still about 3×.
+
+Everything else in round 5 checks out: popups, separation, the bomber fix, animations, Farsi, the economy, and the expert/human targets.
+
+### §11 targets
+
+| # | setup | target | result (round 5) | verdict |
+|---|---|---|---|---|
+| A1 | no-dodge, 0 upg, ch1 | ≥ 1 death in 2/2 layouts | wins with 0 deaths in both (dmg 251 / 269) | **miss** |
+| A1 | no-dodge, 0 upg, **ch2** | game over in 2/2 | wide: game over at t 99 · portrait: **wins** with 2 deaths (dmg 577) | **1 of 2** |
+| A1 | (info) no-dodge ch3 | – | game over in 2/2 (t 127 / 142) | – |
+| A2 | novice, 0 upg, ch1 / ch2 | wins, 0–2 deaths | 8/8 wins, 0 deaths (dmg 15–134) | met |
+| A2 | novice, 0 upg, **ch3** | fails in ≥ 3/4 | **4/4 wins, 0 deaths** (dmg 151 / 283 / 125 / 293) | **miss** |
+| A2+ | (info) novice, 0 upg, ch4 / ch5 (s1) | (implied: should fail) | arctic 2/2 wins (0 / 1 deaths) · citadel 2/2 wins (2 / 1 deaths) | **miss** |
+| A3 | novice `--budget`, ch3 / ch4 / ch5 | ≥ 3/4 wins, **1–3 deaths** on average | 12/12 wins; average deaths 0 / 0 / 0.25 (dmg desert 35–251, arctic 129–209, citadel 312–627) | **miss** (too easy) |
+| A4 | expert, 0 upg, ch1–3 | wins, 0–1 deaths | 12/12 wins, 0 deaths (dmg 0–88) | met |
+| A4 | expert `--budget`, ch4 / ch5 | wins, 0–1 deaths | 8/8 wins, 0 deaths (dmg 11–149) | met |
+| A5 | boss pass, godMode, power 4, `--budget` | every phase ≥ 10 s; total 40–60 s; escalation ≤ 1 | phases: all ≥ 10.0 s · total 36.7–83.5 s (pacific portrait 37.3, desert portrait 36.7, arctic wide 61.8, **jungle wide 83.5**) · escalation 2–3 in jungle wide, jungle portrait (P1 stage 3) and arctic wide (P3 stage 2) | phases met · total and escalation **partial** (7/10 cells) |
+| A5b | boss pass, 0 upg, ch4 / ch5 | escalation ≥ 1 in ≥ 2 phases | 4/4 cells (arctic portrait 1/1/1, arctic wide 0/2/3, citadel wide 0/2/1, citadel portrait 1/2/1); total 72–90 s | met |
+| A6 | expert, all | 0 zero-escape, 0 unavoidable | 0-upg: 0 / 0 in ~207k samples · budget: **1 zero-escape sample and 1 unavoidable hit** (citadel portrait s2, out of ~128k samples) | **met with one exception** (see R5-6) |
+| A7 | human, ch5 | median THREAT ≥ 2 | threatMax 3 / 3 / 3 / 3 | met |
+| A8 | economy (human + novice JSON) | cumulative credits at start of ch2–5 between 1.1× and 3.0× the budget cost | 1396 / 2996 / 4842 / 6988 vs 470 / 1432 / 3099 / 5388 = **2.97× / 2.09× / 1.56× / 1.30×** | met (ch2 is at the top edge) |
+
+### Other checks
+
+- **Boss fights in real runs, new long tail on wide.**
+  - Portrait: median ≈ 47 s (36–69 s at power 4–5).
+  - Wide: median ≈ **110 s** (37–168 s), most of them at escalation stage 3 in every phase. Even ch1 runs long: expert pacific wide s1 took 107 s.
+  - Power at the end of the run on wide is mostly 1–3 (portrait: 3–5). With P4/P5 (fewer power drops) and the 1520u-wide field, the bot collects far fewer P pickups. In boss mode (forced power 4) the wide times are normal (40–62 s), so low power is the cause. See R5-2.
+- **Phase gate (R4-2):** gated time per phase in the budget boss pass is 0–2.8 s in 8/10 cells. Pacific wide P1 is 4.1 s and desert wide P1 is 3.8 s. Target < 3 s: **mostly met**.
+- **THREAT:** dodging profiles reach rank 2–3 in almost every run. No-dodge stays at 0–1, because every hit empties the meter. Banners and HUD pips appear in screenshots. Works as specified.
+- **Missiles (R4-6):** dodging profiles took 0–3 hits per run (e.g. expert: 1 hit / 1,036 launched). Still not a real threat; unchanged as recommended.
+- **Medals (M1, ×1.25 starting guess):**
+  - **ACE is still reached** on portrait ch1–2 and by budget experts in ch4–5:
+    - pacific portrait: expert 64.0k / 69.5k, human 65.4k vs 63k
+    - pacific wide: novice 70.1k, expert 71.5k, human 73.5k vs 68.0k
+    - jungle portrait: novice 83.3k, expert 81.9k / 81.3k, human 80.4k vs 80k
+    - arctic portrait: expert-budget 108.8k / 126.5k vs 107.5k
+    - citadel portrait: expert-budget 164.1k vs 162.5k
+  - **ACE is unreachable on wide** in ch2–5: jungle wide best 81.4k vs 88k; desert wide 56.3k vs 83.6k; arctic wide 71.6k vs 75.3k; citadel wide 90.6k vs 154.4k.
+  - No-dodge pacific portrait scored 54.3k, which is **GOLD** (54k).
+  - Measured wide/portrait median score ratios: pacific 1.09 (factor 1.08), jungle 0.91 (factor 1.1), desert 0.61 (0.88), arctic 0.76 (0.7), citadel 0.56 (0.95). See R5-4.
+- **Enemy overlap (round3 #7):** a sampler checked non-boss on-screen pairs in the same layer whose boxes overlap by more than 50 %, every 0.25 s, with godMode and seed 1 (≈ 2,300 samples).
+  - 0 overlapping samples in pacific, jungle and desert portrait, and in pacific and desert wide.
+  - Remaining overlaps:
+    - kamikaze drones in their dive (exempt by design; arctic and citadel wide)
+    - `bomber_elite|interceptor` in citadel portrait (4 samples ≈ 1 s)
+    - `armored_vehicle|destroyer` in arctic portrait (5 samples, closest 17u)
+    - one `gunship_light` pair in jungle wide
+  - Screenshots: the desert and citadel tank columns drive with bumper gaps, fighter flights are spread out, and helicopters are distinct. **Met.**
+- **Score popups (round3 #6):**
+  - Small outlined "+N" above the kill, tinted with the combo, and clearly readable in portrait.
+  - Small on wide (1600×900) but readable.
+  - 4–8 on screen at most (average under 1).
+  - With the setting off, 0 popups were spawned.
+  - A popup near the top edge draws under the HUD top bar. That is acceptable.
+  - **Met.**
+- **Enemy animations (round3 #9):** checked in screenshots:
+  - helicopter rotor discs (citadel)
+  - burning ground wrecks with smoke (arctic, desert)
+  - plane spin-out with the damaged sprite (desert crop)
+  - debris chunks
+  - damage smoke on hurt units
+  - Tread scroll and turret recoil cannot be judged from stills; not verified.
+- **Bomber wave (round3 #10):** in desert @121 wide, the carpet-bomb discs and warnings stay clean and readable, with up to 19 hazards live. `perf.spec.ts` measured **74.9 fps average, worst frame 26.5 ms**. **Met.**
+- **Farsi (step B):**
+  - The menu, chapters, shop (all 4 tabs), settings (GAME tab with the language and score-popup rows), boss HUD and results screens in 540×960 and 1600×900 are all readable. Nothing overflows or is clipped, and no overflow warnings appeared.
+  - `settings.language` and `<html lang>` both switch to `fa`.
+  - Only cosmetic finding (R5-5): signed numbers are reordered by bidi. "+15" shows as "15+" and "-0.8" as "0.8-" (shop descriptions, chapter rewards).
+
+### FPS (real time, Edge GPU Intel UHD / D3D11, 75 Hz display cap, godMode, 12 s per cell after a 1.5 s settle)
+
+| layout | cells | avg fps | min 1-s bucket | worst frame | frames > 20 ms |
+|---|---|---|---|---|---|
+| portrait 540×960 | 5 chapters × (early waves @30 s, boss spawn) | 75.0–75.1 | 75 | 13.9 ms | 0 |
+| wide 1600×900 | 5 chapters × (early waves @30 s, boss spawn) | 75.0–75.1 | 75 | 14.2 ms | 0 |
+| bomber wave (perf.spec, desert @121 wide) | 1 | 74.9 | – | 26.5 ms | – |
+
+This machine was idle during the pass. The animation agent's 68 fps came from a loaded host.
+
+### Issues (round 5)
+
+**R5-1. A 0-upgrade player can still clear the whole campaign (owners: engine `src/core/world.ts`, enemy `src/patterns/tiers.ts`, level `src/levels/chapters/*`). Severity: high. This is the user's complaint.**
+- **Evidence:** the novice bot with 0 upgrades won 12/12 runs in ch1–3 with 0 deaths, and 4/4 in ch4–5 with 0–2 deaths. Its damage in ch3 is about 125–293 (median ≈ 220). It has 3 lives × (100 hull + 40 shield + regen), and repair drops on top, so a game over needs roughly 3× that damage.
+- **Why the knobs fall short:**
+  - The §11 knob path (T1 ch3 fireRate 1.45 → 1.55, D1 ch3 1.4, regen 3 → 2.5) is worth maybe +20–30 % damage, not 3×.
+  - The budget novice also sits at 0–0.25 deaths, so the whole curve from ch3 on is about 2× too soft for the novice profile, not just the 0-upgrade case.
+- **Suggestion:** pick one structural lever instead of more small multipliers, then re-run A2/A3 only:
+  - (a) Lose 1 weapon power level per death and halve repair drops from ch3 on (`sustainDropMul` [1, 1, 0.5, 0.4, 0.35]).
+  - (b) Make the player's hit cost scale with the chapter: `chapterDmg` [0.9, 1.3, 1.8, 2.0, 2.2]. Expert takes 0–149 damage in ch4–5 with budget, so there is room for it.
+  - (c) Gate on DPS: raise E1 HP so a 0-upgrade ship cannot kill fast enough, which raises screen density. Ch3 1.25 → 1.5 and up.
+  - A short human playtest of ch3 at 0 upgrades is still the real judge. The novice bot has perfect perception within 150u.
+
+**R5-2. Low weapon power on wide makes boss fights 2–3× too long (owners: engine `src/core/world.ts` `powerDropMul`/`dropMul`, level wide copies and pickups). Severity: medium.**
+- **Evidence:** dodging profiles end wide runs at power 1–3 (13 of 24 wide runs ≤ 2). Portrait runs end at 3–5. Real-run boss times on wide are 37–168 s (median ≈ 110), mostly at escalation stage 3, against a target of 40–70 s.
+- **Suggestion:**
+  - On wide layouts, either scale power drops up (×1.3) or place P pickups in the centre band.
+  - Or make bosses read the player's power level, for example drain or gate scaling when power is ≤ 2.
+
+**R5-3. The boss-pass total is out of range in 3 of 10 cells (owner: level/bosses `src/bosses/*`). Severity: low.**
+- **Evidence:** pacific portrait 37.3 s and desert portrait 36.7 s are under 40 s. Jungle wide 83.5 s (escalation 2/2/1, P1 26 s) and arctic wide 61.8 s are over. Jungle portrait P1 lasted 30 s at escalation stage 3, so the gunship's P1 pods are slow to kill at power 4 (`shieldTimeout` 30 s ends it).
+- **Suggestion:**
+  - gunship hpMul 1.7 → 1.55, or a shorter `shieldTimeout`.
+  - carrier and fortress portrait: +0.1 hpMul each.
+
+**R5-4. Medal thresholds need re-deriving from the round-5 medians (owner: level `src/levels/chapters/*` `medalScores`). Severity: low.**
+- Measured dodging-run score medians, portrait / wide:
+
+  | chapter | portrait | wide |
+  |---|---|---|
+  | pacific | 64k | 70k |
+  | jungle | 81k | 74k |
+  | desert | 82k | 50k |
+  | arctic | 87k | 66.5k |
+  | citadel | 127k | 71k |
+
+- **Suggested wide factors:** jungle 1.1 → 0.95, desert 0.88 → 0.65, citadel 0.95 → 0.6. Keep pacific (1.08) and arctic (0.7).
+- **ACE:** raise it about 10 % on pacific and jungle portrait (69k / 88k) so that the novice and human profiles do not reach it.
+- **GOLD:** pacific GOLD 54k is reached by no-dodge (54.3k). Raise it to about 57k.
+
+**R5-5. Bidi of signed numbers in Farsi (owner: i18n `src/i18n/locales/fa.ts`, or UI/TextService). Severity: cosmetic.**
+- **Affected strings:** "+{n} سکه" (`common.plusCredits`, `chapters.clearBonus`, objective rewards), `upgrade.*.desc` ("+15 بدنه…") and the flare desc ("-0.8 ثانیه…").
+- **Symptom:** they render as "15+" / "150+" / "0.8-", with the sign on the far side of the number.
+- **Fix:** prefix the signed number with U+200E (LRM), or isolate it with LRI/PDI in the text service. Leave the final call to the native reviewer.
+
+**R5-6. One unavoidable hit for the expert at THREAT 3 with budget (owner: enemy `src/patterns`). Severity: low.**
+- **Evidence:** citadel portrait s2 `--budget` had 1 zero-escape sample out of ≈ 14k, followed by 1 hit. Before this round there were 0. The novice also logged more zero-escape samples than in round 4 (0–25 per run, mostly desert portrait s2 and citadel portrait), which fits the THREAT bullet-speed and fire-rate increases.
+- **Suggestion:** if it recurs, apply the A4 knob (THREAT `bulletSpeedPerLevel` 0.08 → 0.06).
+
+**R5-7. Jungle objective "destroy 2 bases or hangars" (R4-4) is still 0/12 (owner: level). Severity: low.**
+- **Evidence:** only 2 novice runs destroyed 1 base. The bot does not prioritise bases, so a manual check is still needed before you lower the goal to 1.
+
+### Round 4 issues
+
+| # | status |
+|---|---|
+| R4-1 novice never dies | **open**, superseded by R5-1 (more damage, still no deaths) |
+| R4-2 phase gate waits | **mostly resolved**: gate 0–2.8 s in 8/10 cells, worst 4.1 s |
+| R4-3 ACE too easy (jungle wide, citadel) | **overshot on wide** (unreachable); portrait ch1–2 now the easy ACE (R5-4) |
+| R4-4 jungle bases | open (R5-7) |
+| R4-5 wide copies counted | **resolved** (`world.ts:716`; killRate stays ≤ 1, spawned excludes copies) |
+| R4-6 missiles harmless | unchanged (informational) |
+
+Raw data is in the QA scratch folder: `out/*.json` (bot runs), `fps.json` and `shots/` (screenshots). `tests/qa/economy.mjs` was run on `play-human.json`, `play-novice.json` and `play-novice-late.json`.
+
 ## Round 4 re-verification (after the engine / enemy / level / ui / devops / audio-assets fix round)
 
 Date: 2026-11-19 · Build: fresh `vite build` of the current tree into a scratch dir, served by `vite preview --port 5310`. Same method, profiles, seeds and difficulty (normal) as the original report below: no-dodge s1, novice s1+s2, human s1+s2, expert s1 (70 runs), godMode boss pass (10 runs), and a real-time GPU FPS pass (10 chapter/layout cells). Raw JSON: `test-results/qa-round4/` (copied out so `playwright test` cannot wipe it). The "before" numbers are re-computed from the original round's JSON.

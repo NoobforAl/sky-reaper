@@ -41,6 +41,33 @@
    bomber waves (heavy bomber, bomber formations, carpet-bomb patterns): bullet/fx counts, per-frame allocations,
    trail/smoke particle spawn rate, draw calls. Fix: cap particle trails, pool everything, batch draws, limit
    simultaneous bomber bullet emitters. Add a Playwright perf test for a bomber wave (FPS floor 50 on GPU).
+## Round 6 queue (user feedback 2026-11-19, after round 5 QA)
+11. **Chapter 5 (Iron Citadel) layout redesign (owner: level backgrounds + level events; asset agent for tiles):**
+    the user says it "looks too bad and things are placed badly". Redesign the citadel biome: coherent industrial base
+    layout (roads, walls, platforms, pipes, landing pads), with structures and turrets sitting on believable foundations
+    instead of scattered, no overlapping or floating set-pieces, and a clear lane for the player. Wide and portrait.
+12. **Boats are not on the river (owner: level runner/builders + jungle chapter):** some ships spawn or drift onto land in
+    the jungle (and any other river or coast). Water units must spawn on the river path and follow it (same curve as the
+    river background, with scroll offset), and wide copies must use the river too. Add a sanity check that fails when
+    a naval unit's position is not on water.
+13. **Enemy aircraft colours per chapter (owner: asset generator, plus a small loader/render hook):** recolour enemy
+    planes and helicopters to each biome, keeping silhouettes and readability against the background:
+    - pacific: navy grey-blue;
+    - jungle: olive and green camo;
+    - desert: sand and tan;
+    - arctic: white and grey splinter;
+    - citadel: dark steel with red accents.
+
+    Bosses keep their own art. Prefer palette-swapped variant sprites generated at build time (no runtime shader cost).
+14. **Desert sandstorm stronger (owner: level desert events + engine wind):** the storm is too weak. Make it aggressive:
+    - gusts push the player left or right;
+    - each gust direction is telegraphed about 1 s ahead (a sand streak plus a HUD arrow);
+    - gusts last 2–4 s and are strong enough that the player must counter-steer;
+    - visibility drops a bit during gusts;
+    - never pushes the player into an unavoidable hit, and the ship stays clamped to the field.
+
+    Light wind also affects bullets visually only (no gameplay change). Arctic blizzard gets a milder version.
+
 4. Farsi support: APPROVED by the user. Plan in docs/I18N_FARSI_PLAN.md and style rules in docs/FA_STYLE_GUIDE.md.
    Strings must be short, modern and game-like (no literary or classic register), with no awkward or vulgar literal
    translations or transliterations. Logo stays Latin with a small Farsi subtitle.
