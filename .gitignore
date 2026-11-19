@@ -10,3 +10,7 @@ temp/
 
 ./temp/
 dist-arvan/
+
+# secrets
+.env
+.env.*

@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "deploy": "npm run build && npm run typecheck:worker && wrangler deploy",
     "build:arvan": "npm run build && node scripts/arvan/build-bundle.mjs dist dist-arvan/bundle.js",
-    "deploy:arvan": "npm run build:arvan && temp\\arvan.exe ec deploy -f dist-arvan/bundle.js sky-reaper",
+    "deploy:arvan": "npm run build:arvan && node scripts/arvan/deploy.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:worker": "tsc --noEmit -p worker/tsconfig.json",
     "dev:edge": "npm run build && wrangler dev",
