@@ -1,7 +1,7 @@
 /**
  * i18n core (phase 1 of docs/I18N_FARSI_PLAN.md). Self-contained: not wired into any screen yet.
  *
- *   t("menu.start")                         -> "START MISSION" / "شروع مأموریت"
+ *   t("menu.start")                         -> "START MISSION" / "شروع"
  *   t("objective.pac_naval", { n: 6 })      -> "Sink 6 ships" / "6 کشتی را غرق کن" (۶ with Persian digits on)
  *   t("objective.cit_deaths", { n: 2, count: 2 }) -> picks the `one|other` plural form by `count`
  *

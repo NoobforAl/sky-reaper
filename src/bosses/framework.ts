@@ -11,6 +11,8 @@
  */
 import { DESIGN_W, GAME_W, X_SCALE, type BossController, type BossHudInfo, type Enemy, type PatternDef, type PatternInstance, type PatternOwner, type PickupKind, type WorldAPI } from "../contracts";
 import { patternRunner } from "../patterns";
+import { tr } from "../levels/i18n";
+import { BP } from "./attacks";
 import { BOSS_PART_DEFS } from "./parts";
 
 const SIM_STEP = 1 / 60;
@@ -25,22 +27,51 @@ const SIM_STEP = 1 / 60;
  *  - the core cannot be destroyed before the final phase has run `minPhaseSec`: once it drops to `coreFloor` of its
  *    max HP it hardens until the current phase has run its minimum; before the final phase that also advances the
  *    phase (so focusing the core never stalls the fight).
+ *
+ * Round 5 DPS gate (docs/BALANCE_SPEC.md section 5, B1-B3): bosses are sized for the budgeted DPS (per-boss hpMul) and
+ * a phase that outlasts its soft timer `softSec[phase-1]` ESCALATES: stage 1 at the timer, +1 stage every
+ * `escalateEvery` s, up to `escalateMax` (move cooldowns x(1 - escalateCd * stage), boss bullets x(1 + escalateSpeed *
+ * stage), banner "BOSS ENRAGED" / "ENRAGED II" / "ENRAGED III"; stage 3 adds a punish burst every `punishEvery` s).
+ * THREAT (world.threat 0..3) speeds boss moves +10 % and boss bullets +8 % per level. The armour drain is now only a
+ * last-resort anti-softlock after `maxPhaseSec` (50 s, by then the boss is at ENRAGED III).
+ * QA R4-2: phase 2 used to end on the gate floor with an invulnerable rig: phase 2 now holds 30 % of the HP (was 25 %,
+ * phaseAt [0.72, 0.42]) and the floor is 10 s; `gatedSec[]` counts the seconds each phase spent hardened.
  */
 export const BOSS_TUNING = {
-  /** total-HP fractions where phase 2 / phase 3 start (phase 3 holds 45 % of the HP) */
-  phaseAt: [0.7, 0.45] as const,
+  /**
+   * total-HP fractions where phase 2 / phase 3 start (P1 28 %, P2 30 %, P3 42 % of the HP). QA R4-2 asked for
+   * [0.75, 0.42]; with the round-5 HP the godMode pass then gated phase 1 for 4-5.5 s instead, so P1 keeps a bit more.
+   */
+  phaseAt: [0.72, 0.42] as const,
   /** seconds of no attacks after a phase change */
   phaseBreather: 1.6,
-  /** a phase lasts at least this long (s) before the next one (or the defeat) may start */
-  minPhaseSec: 11,
-  /** after this long in one phase the armour cracks (anti-stall drain, see drain()) */
-  maxPhaseSec: 24,
-  /** share of each part's max HP lost per second while the armour is cracked */
-  drainPerSec: 0.05,
+  /** a phase lasts at least this long (s) before the next one (or the defeat) may start (QA R4-2: 11 -> 10) */
+  minPhaseSec: 10,
+  /** soft timers per phase (s): past this the boss escalates (B2) */
+  softSec: [18, 16, 26] as const,
+  /** seconds per extra escalation stage after the soft timer */
+  escalateEvery: 6,
+  escalateMax: 3,
+  /** move cooldown cut per stage (x0.88 / 0.76 / 0.64) */
+  escalateCd: 0.12,
+  /** boss bullet speed per stage (x1.06 / 1.12 / 1.18) */
+  escalateSpeed: 0.06,
+  /** THREAT: boss move rate +10 % and boss bullet speed +8 % per level */
+  threatMoveRate: 0.1,
+  threatBulletSpeed: 0.08,
+  /** ENRAGED III punish burst from the core (s) */
+  punishEvery: 2.5,
+  /** after this long in one phase the armour cracks (last-resort anti-softlock drain, B3: 24 -> 50) */
+  maxPhaseSec: 50,
+  /** share of each part's max HP lost per second while the armour is cracked (B3: 0.05 -> 0.03) */
+  drainPerSec: 0.03,
   /** core hardens at this fraction of its HP until it is allowed to die */
   coreFloor: 0.2,
-  /** core shield drops anyway after this long in phase 1 (anti-stall) */
-  shieldTimeout: 45,
+  /**
+   * core shield drops anyway after this long in phase 1 (anti-stall). Round 5: 45 -> 30 (= softSec[0] + 2 escalation
+   * stages): the godMode pass showed the gunship's phase 1 ending on this timer at 44 s, its pods being hard to track
+   */
+  shieldTimeout: 30,
   /** defeat sequence length before `done` */
   defeatSec: 2.4,
   /** min telegraph for big attacks (ms) */
@@ -151,7 +182,14 @@ export abstract class BossBase implements BossController {
   private pending: Array<{ kind: string; name: string; ox: number; oy: number; core: boolean }> = [];
   private hpScale: number;
   private initialTotal = 0;
-  private hudInfo: BossHudInfo = { name: "", hp: 1, maxHp: 1, phase: 1, phases: 3 };
+  private hudInfo: BossHudInfo & { gatedSec?: number[] } = { name: "", hp: 1, maxHp: 1, phase: 1, phases: 3, escalation: 0 };
+  /** soft-timer escalation stage of the current phase 0..3 (B2) */
+  escalation = 0;
+  /** seconds each phase spent hardened by the min-phase gate (QA R4-2 telemetry; also on hud() as `gatedSec`) */
+  readonly gatedSec = [0, 0, 0];
+  /** seconds each phase lasted (the running phase counts up) */
+  readonly phaseSec = [0, 0, 0];
+  private punishT = 0;
   protected moves: Move[] = [];
   /** extra condition keeping the core shielded (e.g. shield generators alive) */
   protected coreShieldExtra(): boolean {
@@ -246,6 +284,7 @@ export abstract class BossBase implements BossController {
   fire(pattern: PatternDef, from: PartRT | string | null, facing = 90): PatternInstance | null {
     const p = typeof from === "string" ? this.byName.get(from) : from;
     if (p && (p.dead || !p.e.alive)) return null;
+    pattern = this.scaled(pattern);
     let owner: PatternOwner;
     if (p) {
       p.owner.facing = facing;
@@ -261,6 +300,38 @@ export abstract class BossBase implements BossController {
     }
     this.running.push({ inst, part: p ?? null });
     return inst;
+  }
+
+  /** THREAT level 0..3 of the running world (WorldAPI.threat, optional) */
+  get threat(): number {
+    const t = this.world.threat;
+    return typeof t === "number" && t > 0 ? Math.min(3, Math.floor(t)) : 0;
+  }
+
+  /**
+   * `pattern` with boss bullet speed x(1 + escalateSpeed * escalation) x(1 + threatBulletSpeed * threat), cached per
+   * (pattern, stage, threat) so steady state allocates nothing. Missiles and hazard patterns are never touched (same
+   * rule as src/patterns/tiers.ts tieredPattern); telegraph times are unchanged. Runner speed caps still apply.
+   */
+  private scaled(pattern: PatternDef): PatternDef {
+    const esc = this.escalation;
+    const th = this.threat;
+    if (esc === 0 && th === 0) return pattern;
+    const b = pattern.bullet;
+    if (!b || b.isMissile || pattern.kind === "homing" || pattern.kind === "delayedBlast" || pattern.kind === "areaStrike") return pattern;
+    const key = esc * 4 + th;
+    let arr = SCALED.get(pattern);
+    if (!arr) {
+      arr = [];
+      SCALED.set(pattern, arr);
+    }
+    let out = arr[key];
+    if (!out) {
+      const mul = (1 + BOSS_TUNING.escalateSpeed * esc) * (1 + BOSS_TUNING.threatBulletSpeed * th);
+      out = { ...pattern, bullet: { ...b, speed: Math.round(b.speed * mul) } };
+      arr[key] = out;
+    }
+    return out;
   }
 
   /** run fn after `ms`, with a warning ring + sfx on the part now (telegraph >= 800 ms for big attacks) */
@@ -312,6 +383,8 @@ export abstract class BossBase implements BossController {
     h.maxHp = Math.max(1, this.initialTotal);
     h.phase = this.phase;
     h.phases = this.phases;
+    h.escalation = this.escalation;
+    h.gatedSec = this.gatedSec;
     return h;
   }
 
@@ -382,6 +455,7 @@ export abstract class BossBase implements BossController {
     }
 
     this.phaseT += dt;
+    this.phaseSec[this.phase - 1] = this.phaseT;
     this.move(dt);
     this.placeParts();
 
@@ -394,7 +468,9 @@ export abstract class BossBase implements BossController {
     const early = this.phaseT < BOSS_TUNING.minPhaseSec;
     if (want > this.phase && !early) this.setPhase(this.phase + 1);
     this.gateHold = want > this.phase && early;
+    if (this.gateHold) this.gatedSec[this.phase - 1] += dt;
     this.applyShield();
+    this.updateEscalation(dt);
     if (this.phaseT > BOSS_TUNING.maxPhaseSec && !this.gateHold) this.drain(dt);
     // hardened / shielded parts pulse so the player reads "not yet"
     this.shieldFxT -= dt;
@@ -455,7 +531,8 @@ export abstract class BossBase implements BossController {
       }
       if (this.t < next) continue;
       if (m.big && this.t < this.bigUntil) continue;
-      const speed = this.phase === 3 ? 0.8 : this.phase === 2 ? 0.9 : 1;
+      // phase factor x escalation (B2) / THREAT move rate
+      const speed = ((this.phase === 3 ? 0.8 : this.phase === 2 ? 0.9 : 1) * (1 - BOSS_TUNING.escalateCd * this.escalation)) / (1 + BOSS_TUNING.threatMoveRate * this.threat);
       this.nextUse.set(key, this.t + m.cd * speed);
       if (m.big) this.bigUntil = this.t + m.big;
       try {
@@ -481,7 +558,7 @@ export abstract class BossBase implements BossController {
       if (shielded !== this.coreShielded) {
         this.coreShielded = shielded;
         if (!shielded) {
-          this.world.events.emit("banner", { text: "CORE EXPOSED", subtext: "HIT THE WEAK POINT", ms: 1800 });
+          this.world.events.emit("banner", { text: tr("bossBanner.coreExposed", "CORE EXPOSED"), subtext: tr("bossBanner.coreExposed.sub", "HIT THE WEAK POINT"), ms: 1800 });
           this.world.spawnFx("ring", c.e.x, c.e.y, { scale: 2.5 });
           this.world.playSfx("shield_hit");
         }
@@ -503,7 +580,7 @@ export abstract class BossBase implements BossController {
   private drain(dt: number): void {
     if (!this.drainNotified) {
       this.drainNotified = true;
-      this.world.events.emit("banner", { text: "ARMOUR CRACKING", subtext: "FINISH IT", ms: 1600 });
+      this.world.events.emit("banner", { text: tr("bossBanner.armourCracking", "ARMOUR CRACKING"), subtext: tr("bossBanner.armourCracking.sub", "FINISH IT"), ms: 1600 });
     }
     const c = this.core;
     const k = BOSS_TUNING.drainPerSec * dt;
@@ -514,6 +591,32 @@ export abstract class BossBase implements BossController {
     }
   }
   private drainNotified = false;
+
+  /**
+   * B2 soft timer: past softSec[phase-1] the boss escalates one stage, then one more every escalateEvery s (max 3).
+   * Not while the rig is gate-held (the player cannot hurt it then). ENRAGED III adds a punish burst from the core
+   * every punishEvery s (framework-wide, not per boss).
+   */
+  private updateEscalation(dt: number): void {
+    const T = BOSS_TUNING;
+    const soft = T.softSec[this.phase - 1] ?? T.softSec[T.softSec.length - 1]!;
+    const esc = this.phaseT < soft ? 0 : Math.min(T.escalateMax, 1 + Math.floor((this.phaseT - soft) / T.escalateEvery));
+    if (esc > this.escalation && !this.gateHold) {
+      this.escalation = esc;
+      const text = esc === 1 ? tr("bossBanner.enraged1", "BOSS ENRAGED") : esc === 2 ? tr("bossBanner.enraged2", "ENRAGED II") : tr("bossBanner.enraged3", "ENRAGED III");
+      this.world.events.emit("banner", { text, ms: 1200 });
+      this.world.playSfx("warning");
+      this.punishT = 0.8;
+    }
+    if (this.escalation >= 3 && this.t >= this.breatherUntil) {
+      this.punishT -= dt;
+      if (this.punishT <= 0) {
+        this.punishT = T.punishEvery;
+        const c = this.core;
+        this.fire(BP.burst3, c && !c.dead && c.e.alive ? c : null);
+      }
+    }
+  }
   private coreShielded = true;
   /** phase threshold reached before the phase ran its minimum: the rig is hardened */
   private gateHold = false;
@@ -521,6 +624,7 @@ export abstract class BossBase implements BossController {
   private setPhase(p: number): void {
     this.phase = p;
     this.phaseT = 0;
+    this.escalation = 0;
     this.cancelAll();
     this.nextUse.clear();
     this.bigUntil = 0;
@@ -580,6 +684,9 @@ export abstract class BossBase implements BossController {
     }
   }
 }
+
+/** escalated / THREAT-scaled copies of boss patterns: index = escalation * 4 + threat */
+const SCALED = new WeakMap<PatternDef, PatternDef[]>();
 
 /** pickup kinds helper for subclasses */
 export const PK = (k: PickupKind) => k;

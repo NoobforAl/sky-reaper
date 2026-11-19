@@ -87,11 +87,17 @@ export interface EnemyRT extends Enemy {
   lastY: number;
   /** smoothed bank -1..1 from lateral motion (selects `_bankl` / `_bankr` art when present) */
   bank: number;
+  /** bank art selection with hysteresis: -1 `_bankl`, 0 level, 1 `_bankr` (anim.ts bankSelect) */
+  bankSel: number;
+  /** seconds since this unit last fired a (non-missile) bullet (99 = never); drives gun recoil + muzzle flash */
+  fireT: number;
+  /** heading (deg) of that last shot */
+  fireDir: number;
   /** cached sprite keys for `def` (set at spawn; see spritekeys.ts) */
   keys: EnemyKeys;
 }
 
-export type FxInternalKind = FxKind | "ping" | "wreck";
+export type FxInternalKind = FxKind | "ping" | "wreck" | "spinout";
 
 export interface Fx {
   kind: FxInternalKind;
@@ -112,8 +118,12 @@ export interface Fx {
   r: number;
   g: number;
   b: number;
-  /** wreck: frame etc. */
+  /** wreck: burn phase; debris: chunk variant; spinout: body frame */
   frame: number;
+  /** wreck: burning strip key (`_burn`, shown for the first BURN_SECS); "" = none */
+  sprite2: string;
+  /** per-fx timer (wreck: next smoke wisp) */
+  aux: number;
 }
 
 export interface Pickup {

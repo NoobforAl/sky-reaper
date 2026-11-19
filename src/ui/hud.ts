@@ -10,6 +10,7 @@ import { computeLoadout, PLAYER_WEAPONS } from "../weapons";
 import { weaponIcon } from "./icons";
 import { C, esc, fmtNum, resolveFont, resolveOutlineFont, type RGB } from "./theme";
 import { Gfx, jet, refreshBuf } from "./widgets";
+import { fromEn, isFa, tr, weaponName as weaponNameI18n } from "./i18n";
 
 /** portrait bottom strip height */
 const BOTTOM_H = 58;
@@ -36,7 +37,38 @@ export function createHud(svc: Services): HudRenderer {
   let lastLives = -1;
   let lifeFlash = 0;
   const touchIcon = (id: string, x: number, y: number, size: number, color: RGB, opacity = 1) => weaponIcon(g, id, x, y, size, svc.sprites, color, opacity);
-  const weaponName = (id: string) => PLAYER_WEAPONS.find((w) => w.id === id)?.name ?? id.toUpperCase();
+  const weaponName = (id: string) => weaponNameI18n(id, PLAYER_WEAPONS.find((w) => w.id === id)?.name ?? id.toUpperCase());
+  /** weapon name in a narrow slot: English keeps the old hard cut, Farsi is clipped at a word with "…" */
+  const weaponLabel = (id: string, x: number, y: number, maxChars: number, maxW: number, size: number, color: RGB) => {
+    const n = weaponName(id);
+    if (isFa()) g.text(n, x, y - 3, { size, color, width: maxW, maxLines: 1 });
+    else g.text(n.slice(0, maxChars), x, y, { size, color });
+  };
+
+  // ---------------------------------------------------------------- THREAT rank (round 5, BALANCE_SPEC §7)
+  let lastThreat = 0;
+  let threatFlash = 0;
+  /** small "THREAT" label + 3 pips (the next pip fills with threatProgress); hidden while the rank is 0 */
+  function drawThreat(d: HudData, x: number, y: number, size: number, pip: number): void {
+    const lvl = Math.max(0, Math.min(3, Math.floor(d.threat ?? 0)));
+    if (lvl > lastThreat) threatFlash = 0.9;
+    lastThreat = lvl;
+    threatFlash = Math.max(0, threatFlash - k.dt());
+    if (lvl <= 0) return;
+    const col: RGB = lvl >= 3 ? C.red : lvl === 2 ? [255, 120, 50] : C.amber;
+    const lbl = tr("hud.threat");
+    const flash = threatFlash > 0 && Math.sin(k.time() * 24) > 0;
+    g.text(lbl, x, y, { size, color: flash ? C.white : col, anchor: "left" });
+    let px = x + g.measure(lbl, size, true) + 6;
+    const prog = Math.max(0, Math.min(1, d.threatProgress ?? 0));
+    for (let i = 0; i < 3; i++) {
+      g.rect(px, y - pip / 2, pip, pip, C.dark, 0.8);
+      if (i < lvl) g.rect(px, y - pip / 2, pip, pip, flash ? C.white : col, 1);
+      else if (i === lvl && prog > 0) g.rect(px, y + pip / 2 - pip * prog, pip, pip * prog, col, 0.45);
+      g.frame(px, y - pip / 2, pip, pip, i < lvl ? col : C.steel, 1, 0.9);
+      px += pip + 3;
+    }
+  }
 
   function hullColor(f: number): RGB {
     return f > 0.5 ? C.green : f > 0.25 ? C.amber : C.red;
@@ -55,7 +87,7 @@ export function createHud(svc: Services): HudRenderer {
     // "4,101" ran into "x1.4". Now the score owns the box 12..SCORE_R (shrinking a step for 7+ digit scores) and the
     // combo is right-aligned on the label row above the digits, so the two can never overlap.
     const SCORE_R = 160; // progress bar starts at 168
-    g.text("SCORE", 12, it + 6, { size: 9, color: C.cyan });
+    g.text(tr("hud.score"), 12, it + 6, { size: 9, color: C.cyan });
     const scoreTxt = fmtNum(shownScore);
     let ss = 22;
     for (const cand of [22, 19, 16, 14]) {
@@ -73,16 +105,20 @@ export function createHud(svc: Services): HudRenderer {
     // touch: shorter bar, the pause icon sits between it and the lives (src/input/touch.ts layout)
     const touchUi = isSkyInput(svc.input) && svc.input.touchVisible;
     const pw = touchUi ? 116 : 150;
-    g.text(esc(d.chapterName.toUpperCase()).slice(0, touchUi ? 14 : 24), px + pw / 2, it + 14, { size: 9, color: C.text, anchor: "center" });
+    const chName = fromEn(d.chapterName.toUpperCase());
+    if (isFa()) g.text(chName, px + pw / 2, it + 12, { size: 9, color: C.text, anchor: "center", width: pw, maxLines: 1 });
+    else g.text(esc(chName).slice(0, touchUi ? 14 : 24), px + pw / 2, it + 14, { size: 9, color: C.text, anchor: "center" });
     g.bar(px, it + 28, pw, 6, d.progress, C.cyan, { opacity: 0.9 });
     g.circle(px + pw * Math.max(0, Math.min(1, d.progress)), it + 31, 4, C.amber);
     g.rect(px + pw - 2, it + 24, 4, 14, C.red);
+    // THREAT pips: under the progress bar, inside the top bar (never over the playfield)
+    drawThreat(d, px, it + 44, 8, 7);
     // lives
     if (lastLives >= 0 && p.lives < lastLives) lifeFlash = 1.2;
     lastLives = p.lives;
     lifeFlash = Math.max(0, lifeFlash - k.dt());
     const lives = Math.max(0, p.lives);
-    g.text("LIVES", GAME_W - 12, it + 6, { size: 9, color: C.cyan, anchor: "topright" });
+    g.text(tr("hud.lives"), GAME_W - 12, it + 6, { size: 9, color: C.cyan, anchor: "topright" });
     if (lives <= 5) {
       for (let i = 0; i < lives; i++) {
         const lx = GAME_W - 22 - i * 24;
@@ -92,7 +128,9 @@ export function createHud(svc: Services): HudRenderer {
     } else g.text(`x${lives}`, GAME_W - 12, it + 22, { size: 18, color: C.amber, anchor: "topright" });
     if (svc.save.data.settings.showFps) {
       const fps = Math.round(d.fps);
-      g.text(`FPS ${fps}`, GAME_W - 12, it + 58, { size: 10, color: fps >= 55 ? C.green : fps >= 40 ? C.amber : C.red, anchor: "topright" });
+      // with a boss bar under the top bar the counter moves above the bottom strip (it used to cover the bar)
+      if (d.boss) g.text(tr("hud.fps", { n: fps }), GAME_W - 12, GAME_H - insets.bottom - BOTTOM_H - 18, { size: 10, color: fps >= 55 ? C.green : fps >= 40 ? C.amber : C.red, anchor: "topright" });
+      else g.text(tr("hud.fps", { n: fps }), GAME_W - 12, it + 58, { size: 10, color: fps >= 55 ? C.green : fps >= 40 ? C.amber : C.red, anchor: "topright" });
     }
   }
 
@@ -105,16 +143,34 @@ export function createHud(svc: Services): HudRenderer {
     const w = WIDE ? (fits ? Math.min(760, room) : GAME_W - 2 * PAD - 40) : GAME_W - 40;
     const x = (GAME_W - w) / 2;
     const y = insets.top + (WIDE ? (fits ? PAD + 6 : PAD + TOP_H + 8) : 60);
+    // round 5: soft-timer escalation (BossHudInfo.escalation 0..3) -> faster, stronger bar pulse + "ENRAGED" tag
+    const esc8 = Math.max(0, Math.min(3, Math.floor(b.escalation ?? 0)));
+    const enraged = esc8 > 0;
+    const tt = k.time();
     g.rect(x, y, w, 32, C.dark, 0.7);
-    g.frame(x, y, w, 32, C.red, 1, 0.8);
-    g.text(esc(b.name.toUpperCase()), x + 8, y + 4, { size: 10, color: C.red });
-    if (b.phases > 1) g.text(`PHASE ${Math.min(b.phase + 1, b.phases)}/${b.phases}`, x + w - 8, y + 4, { size: 10, color: C.amber, anchor: "topright" });
+    g.frame(x, y, w, 32, C.red, enraged ? 2 : 1, enraged ? 0.6 + 0.4 * Math.sin(tt * (8 + esc8 * 3)) : 0.8);
+    let right = x + w - 8;
+    if (b.phases > 1) {
+      const ph = tr("hud.phase", { n: Math.min(b.phase + 1, b.phases), total: b.phases });
+      g.text(ph, right, y + 4, { size: 10, color: C.amber, anchor: "topright" });
+      right -= g.measure(ph, 10, true) + 12;
+    }
+    if (enraged) {
+      const en = tr("hud.enraged");
+      const ew = g.measure(en, 10, true) + 10;
+      const blink = 0.55 + 0.45 * Math.sin(tt * (10 + esc8 * 4));
+      g.rect(right - ew, y + 2, ew, 14, C.red, 0.35 + 0.35 * blink);
+      g.text(en, right - ew / 2, y + 9, { size: 10, color: C.white, anchor: "center", opacity: 0.7 + 0.3 * blink });
+      right -= ew + 8;
+    }
+    g.text(esc(fromEn(b.name.toUpperCase())), x + 8, y + 4, { size: 10, color: C.red, width: Math.max(40, right - x - 8), maxLines: 1 });
     const f = b.maxHp > 0 ? b.hp / b.maxHp : 0;
     const bx = x + 8;
     const bw = w - 16;
     g.rect(bx, y + 18, bw, 9, C.navy, 1);
-    const pulse = 0.85 + 0.15 * Math.sin(k.time() * 10);
-    g.rect(bx, y + 18, bw * Math.max(0, Math.min(1, f)), 9, f < 0.25 ? C.red : [230, 70, 60], pulse);
+    const pulse = enraged ? 0.65 + 0.35 * Math.sin(tt * (10 + esc8 * 4)) : 0.85 + 0.15 * Math.sin(tt * 10);
+    const fillCol: RGB = enraged && Math.sin(tt * (10 + esc8 * 4)) > 0.6 ? [255, 150, 90] : f < 0.25 ? C.red : [230, 70, 60];
+    g.rect(bx, y + 18, bw * Math.max(0, Math.min(1, f)), 9, fillCol, pulse);
     for (let i = 1; i < b.phases; i++) {
       const nx = bx + bw * (1 - i / b.phases);
       g.rect(nx - 1, y + 15, 2, 15, C.white, 0.9);
@@ -152,7 +208,7 @@ export function createHud(svc: Services): HudRenderer {
     plate(x, y, 320, TOP_H, C.cyanDim);
     shownScore += (s.score - shownScore) * Math.min(1, k.dt() * 12);
     if (Math.abs(s.score - shownScore) < 1) shownScore = s.score;
-    g.text("SCORE", x + 14, y + 10, { size: 10, color: C.cyan });
+    g.text(tr("hud.score"), x + 14, y + 10, { size: 10, color: C.cyan });
     g.text(fmtNum(shownScore), x + 14, y + 24, { size: 26, color: C.white, outline: 1 });
     const combo = Number((s as unknown as { combo?: number }).combo ?? (d as unknown as { combo?: number }).combo ?? 0);
     if (combo > 1.01) {
@@ -162,7 +218,9 @@ export function createHud(svc: Services): HudRenderer {
     // chapter progress
     const pw = 292;
     const py = y + TOP_H - 14;
-    g.text(esc(d.chapterName.toUpperCase()).slice(0, 30), x + 306, y + 10, { size: 10, color: C.text, anchor: "topright" });
+    const chName = fromEn(d.chapterName.toUpperCase());
+    if (isFa()) g.text(chName, x + 306, y + 6, { size: 10, color: C.text, anchor: "topright", width: 150, maxLines: 1 });
+    else g.text(esc(chName).slice(0, 30), x + 306, y + 10, { size: 10, color: C.text, anchor: "topright" });
     g.bar(x + 14, py, pw, 6, d.progress, C.cyan, { opacity: 0.9 });
     g.circle(x + 14 + pw * Math.max(0, Math.min(1, d.progress)), py + 3, 5, C.amber);
     g.rect(x + 14 + pw - 2, py - 4, 4, 14, C.red);
@@ -170,11 +228,18 @@ export function createHud(svc: Services): HudRenderer {
     const rw = 220;
     const rx = GAME_W - PAD - insets.right - rw;
     plate(rx, y, rw, 50, C.cyanDim);
-    g.text("LIVES", rx + 14, y + 25, { size: 10, color: C.cyan, anchor: "left" });
+    g.text(tr("hud.lives"), rx + 14, y + 25, { size: 10, color: C.cyan, anchor: "left" });
     drawLives(d.player, rx + rw - 14, y + 25, 22);
+    // THREAT: a small plate under the score cluster (below the boss bar when that bar drops under the clusters)
+    if ((d.threat ?? 0) > 0) {
+      const bossBelow = !!d.boss && GAME_W - 2 * (PAD + 330) < 360;
+      const ty = bossBelow ? it + PAD + TOP_H + 8 + 40 : y + TOP_H + 6;
+      plate(x, ty, 168, 24, C.red);
+      drawThreat(d, x + 10, ty + 12, 10, 9);
+    } else drawThreat(d, 0, 0, 10, 9); // keeps the rank-up flash state in sync while hidden
     if (svc.save.data.settings.showFps) {
       const fps = Math.round(d.fps);
-      g.text(`FPS ${fps}`, rx + rw - 8, y + 58, { size: 11, color: fps >= 55 ? C.green : fps >= 40 ? C.amber : C.red, anchor: "topright" });
+      g.text(tr("hud.fps", { n: fps }), rx + rw - 8, y + 58, { size: 11, color: fps >= 55 ? C.green : fps >= 40 ? C.amber : C.red, anchor: "topright" });
     }
   }
 
@@ -187,18 +252,18 @@ export function createHud(svc: Services): HudRenderer {
     const lw = 340;
     plate(x, y, lw, BOT_H);
     const hf = p.maxHp > 0 ? p.hp / p.maxHp : 0;
-    g.text("HULL", x + 14, y + 20, { size: 11, color: C.text, anchor: "left" });
+    g.text(tr("hud.hull"), x + 14, y + 20, { size: 11, color: C.text, anchor: "left" });
     g.bar(x + 66, y + 12, 200, 16, hf, hullColor(hf), { segments: 5 });
     g.text(`${Math.ceil(Math.max(0, p.hp))}`, x + lw - 14, y + 20, { size: 14, color: hullColor(hf), anchor: "right" });
     const sf = p.maxShield > 0 ? p.shield / p.maxShield : 0;
-    g.text("SHLD", x + 14, y + 46, { size: 11, color: C.text, anchor: "left" });
+    g.text(tr("hud.shield"), x + 14, y + 46, { size: 11, color: C.text, anchor: "left" });
     g.bar(x + 66, y + 40, 200, 12, sf, C.blue, { segments: 5 });
     g.text(`${Math.ceil(Math.max(0, p.shield))}`, x + lw - 14, y + 46, { size: 12, color: C.blue, anchor: "right" });
     // temporary power-ups stack above the plate
     const temps: Array<[string, number, RGB]> = [
-      ["RAPID FIRE", p.rapid, C.amber],
-      ["OVERDRIVE", p.overdrive, C.red],
-      ["MAGNET", p.magnet, C.cyan],
+      [tr("hud.rapidFire"), p.rapid, C.amber],
+      [tr("hud.overdrive"), p.overdrive, C.red],
+      [tr("hud.magnet"), p.magnet, C.cyan],
     ];
     let ty = y - 30;
     for (const [n, t, col] of temps) {
@@ -206,7 +271,7 @@ export function createHud(svc: Services): HudRenderer {
       const blink = t < 2 && Math.sin(k.time() * 16) < 0;
       g.rect(x, ty, 170, 24, col, blink ? 0.2 : 0.35);
       g.text(n, x + 10, ty + 12, { size: 11, color: C.white, anchor: "left" });
-      g.text(`${Math.ceil(t)}S`, x + 160, ty + 12, { size: 11, color: col, anchor: "right" });
+      g.text(tr("settings.secondsShort", { n: Math.ceil(t) }), x + 160, ty + 12, { size: 11, color: col, anchor: "right" });
       ty -= 30;
     }
     // --- right: air weapon, ordnance, flare
@@ -218,16 +283,16 @@ export function createHud(svc: Services): HudRenderer {
     g.rect(rx + 12, by, box, box, C.navy, 0.9);
     g.frame(rx + 12, by, box, box, C.cyan, 1, 0.8);
     weaponIcon(g, p.airWeapon, rx + 12 + box / 2, by + box / 2, 32, svc.sprites, C.cyan);
-    g.text(weaponName(p.airWeapon), rx + 64, by + 4, { size: 12, color: C.cyan });
+    weaponLabel(p.airWeapon, rx + 64, by + 4, 24, 108, 12, C.cyan);
     g.pips(rx + 64, by + 24, 5, Math.max(0, Math.min(5, Math.round(p.power))), 11, C.amber, 3);
     const gx = rx + 176;
     g.rect(gx, by, box, box, C.navy, 0.9);
     g.frame(gx, by, box, box, C.amber, 1, 0.8);
     weaponIcon(g, p.groundWeapon, gx + box / 2, by + box / 2, 32, svc.sprites, C.amber);
-    g.text(weaponName(p.groundWeapon).slice(0, 10), gx + 52, by + 4, { size: 12, color: C.amber });
+    weaponLabel(p.groundWeapon, gx + 52, by + 4, 10, 140, 12, C.amber);
     const bombs = Math.max(0, Math.floor(p.bombs));
     const maxB = Math.max(bombs, Math.floor(p.maxBombs));
-    if (bombs === 0) g.text("EMPTY", gx + 52, by + 24, { size: 12, color: Math.sin(k.time() * 8) > 0 ? C.red : C.grey });
+    if (bombs === 0) g.text(tr("hud.empty"), gx + 52, by + 24, { size: 12, color: Math.sin(k.time() * 8) > 0 ? C.red : C.grey });
     else if (maxB <= 10) {
       for (let i = 0; i < maxB; i++) {
         const bx = gx + 58 + i * 12;
@@ -252,10 +317,10 @@ export function createHud(svc: Services): HudRenderer {
       const lbl = (a: keyof typeof bind) => (bind[a]?.[0] ? keyLabel(bind[a]![0]!) : "-").toUpperCase().slice(0, 5);
       g.hintBar(
         [
-          [[lbl("weaponPrev"), lbl("weaponNext")], "WEAPON"],
-          [[lbl("groundNext")], "ORDNANCE"],
-          [[lbl("bomb")], "BOMB"],
-          [[lbl("special")], "FLARE"],
+          [[lbl("weaponPrev"), lbl("weaponNext")], tr("hud.weapon")],
+          [[lbl("groundNext")], tr("hud.ordnance")],
+          [[lbl("bomb")], tr("hud.bomb")],
+          [[lbl("special")], tr("hud.flare")],
         ],
         rx + rw,
         y - 16,
@@ -280,19 +345,21 @@ export function createHud(svc: Services): HudRenderer {
     // hull / shield
     const hf = p.maxHp > 0 ? p.hp / p.maxHp : 0;
     // label column width follows the (screen-snapped) font size
-    const lbx = 10 + Math.max(g.measure("HULL", 9, true), g.measure("SHLD", 9, true)) + 6;
+    const HULL = tr("hud.hull");
+    const SHLD = tr("hud.shield");
+    const lbx = 10 + Math.max(g.measure(HULL, 9, true), g.measure(SHLD, 9, true)) + 6;
     const bw = Math.max(60, 176 - 34 - lbx);
-    g.text("HULL", 10, y0 + 12, { size: 9, color: C.text, anchor: "left", outline: 1 });
+    g.text(HULL, 10, y0 + 12, { size: 9, color: C.text, anchor: "left", outline: 1 });
     g.bar(lbx, y0 + 6, bw, 12, hf, hullColor(hf), { segments: 5 });
     g.text(`${Math.ceil(Math.max(0, p.hp))}`, lbx + bw + 4, y0 + 12, { size: 10, color: hullColor(hf), anchor: "left", outline: 1 });
     const sf = p.maxShield > 0 ? p.shield / p.maxShield : 0;
-    g.text("SHLD", 10, y0 + 29, { size: 9, color: C.text, anchor: "left", outline: 1 });
+    g.text(SHLD, 10, y0 + 29, { size: 9, color: C.text, anchor: "left", outline: 1 });
     g.bar(lbx, y0 + 24, bw, 10, sf, C.blue, { segments: 5 });
     // temp power-ups
     const temps: Array<[string, number, RGB]> = [
-      ["RPD", p.rapid, C.amber],
-      ["OVD", p.overdrive, C.red],
-      ["MAG", p.magnet, C.cyan],
+      [tr("hud.rapidAbbr"), p.rapid, C.amber],
+      [tr("hud.overdriveAbbr"), p.overdrive, C.red],
+      [tr("hud.magnetAbbr"), p.magnet, C.cyan],
     ];
     let tx = 10;
     for (const [n, t, col] of temps) {
@@ -307,14 +374,14 @@ export function createHud(svc: Services): HudRenderer {
     g.rect(ax, y0 + 6, 30, 30, C.navy, 0.9);
     g.frame(ax, y0 + 6, 30, 30, C.cyan, 1, 0.8);
     weaponIcon(g, p.airWeapon, ax + 15, y0 + 21, 22, svc.sprites, C.cyan);
-    g.text(weaponName(p.airWeapon), ax + 36, y0 + 4, { size: 10, color: C.cyan, outline: 1 });
+    weaponLabel(p.airWeapon, ax + 36, y0 + 4, 24, 76, 10, C.cyan);
     g.pips(ax + 36, y0 + 22, 5, Math.max(0, Math.min(5, Math.round(p.power))), 8, C.amber, 2);
     // ground weapon + ordnance
     const gx = 300;
     g.rect(gx, y0 + 6, 30, 30, C.navy, 0.9);
     g.frame(gx, y0 + 6, 30, 30, C.amber, 1, 0.8);
     weaponIcon(g, p.groundWeapon, gx + 15, y0 + 21, 22, svc.sprites, C.amber);
-    g.text(weaponName(p.groundWeapon).slice(0, 7), gx + 36, y0 + 4, { size: 10, color: C.amber, outline: 1 });
+    weaponLabel(p.groundWeapon, gx + 36, y0 + 4, 7, 92, 10, C.amber);
     const bombs = Math.max(0, Math.floor(p.bombs));
     const maxB = Math.max(bombs, Math.floor(p.maxBombs));
     if (maxB <= 8) {
@@ -324,7 +391,7 @@ export function createHud(svc: Services): HudRenderer {
         else g.circle(bx, y0 + 26, 3.5, i < bombs ? C.amber : C.steel);
       }
     } else g.text(`${bombs}/${maxB}`, gx + 36, y0 + 21, { size: 11, color: C.amber });
-    if (bombs === 0) g.text("EMPTY", gx + 36, y0 + 40, { size: 8, color: Math.sin(k.time() * 8) > 0 ? C.red : C.text, outline: 1 });
+    if (bombs === 0) g.text(tr("hud.empty"), gx + 36, y0 + 40, { size: 8, color: Math.sin(k.time() * 8) > 0 ? C.red : C.text, outline: 1 });
     // flare
     const fx = GAME_W - 30;
     const fy = y0 + 26;
@@ -381,8 +448,8 @@ export function createHud(svc: Services): HudRenderer {
           g.line(p.x + sx * r, p.y + sy * r, p.x + sx * (r - 8), p.y + sy * r, C.red, 2, 0.9);
           g.line(p.x + sx * r, p.y + sy * r, p.x + sx * r, p.y + sy * (r - 8), C.red, 2, 0.9);
         }
-        g.text("LOCK ON", p.x, p.y - r - 14, { size: 11, color: C.red, anchor: "center", outline: 1, opacity: 0.5 + 0.5 * a });
-      } else g.text("MISSILE LOCK", GAME_W / 2, insets.top + (WIDE ? 140 : 110), { size: 14, color: C.red, anchor: "center", outline: 1, opacity: a });
+        g.text(tr("hud.lockOn"), p.x, p.y - r - 14, { size: 11, color: C.red, anchor: "center", outline: 1, opacity: 0.5 + 0.5 * a });
+      } else g.text(tr("hud.missileLock"), GAME_W / 2, insets.top + (WIDE ? 140 : 110), { size: 14, color: C.red, anchor: "center", outline: 1, opacity: a });
     }
   }
 
@@ -419,7 +486,7 @@ export function createHud(svc: Services): HudRenderer {
   }
 
   function drawHint(d: HudData): void {
-    let text = esc(d.hint ?? "");
+    let text = esc(fromEn(d.hint ?? ""));
     const hs = WIDE ? 14 : 12;
     // hints separate their parts with 3+ spaces ("ORANGE BRACKETS = BOMBS ONLY   GREEN = GUNS OR BOMBS"): when the
     // line does not fit (portrait), break at those separators instead of mid-phrase ("GREEN = GUNS OR / BOMBS")
@@ -486,10 +553,11 @@ export function createHud(svc: Services): HudRenderer {
       g.rect(bx, y + (b.subtext ? 50 : 30), bw, 2, C.amber, a);
       // fit long titles on one line (portrait field is narrow)
       let ts = 30 * big;
-      const tw0 = g.measure(esc(b.text), ts, true);
+      const btxt = esc(fromEn(b.text));
+      const tw0 = g.measure(btxt, ts, true);
       if (tw0 > bw - 40) ts = Math.max(14, (ts * (bw - 40)) / tw0);
-      g.text(esc(b.text), GAME_W / 2, y - 4, { size: ts, color: C.amber, anchor: "center", outline: 2, opacity: a, width: bw - 20, align: "center" });
-      if (b.subtext) g.text(esc(b.subtext), GAME_W / 2, y + 30, { size: 13 * big, color: C.white, anchor: "center", opacity: a, width: bw - 40, align: "center" });
+      g.text(btxt, GAME_W / 2, y - 4, { size: ts, color: C.amber, anchor: "center", outline: 2, opacity: a, width: bw - 20, align: "center" });
+      if (b.subtext) g.text(esc(fromEn(b.subtext)), GAME_W / 2, y + 30, { size: 13 * big, color: C.white, anchor: "center", opacity: a, width: bw - 40, align: "center" });
     }
   }
 

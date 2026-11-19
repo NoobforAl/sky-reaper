@@ -9,9 +9,10 @@ const { L, C, R, LC, RC } = LANES;
 
 export function arctic(): ChapterScript {
   const tl = new TL();
-  tl.setDefaults({ hpScale: 1.1 });
+  // round 5 balance E1: 1.1 -> 1.4
+  tl.setDefaults({ hpScale: 1.4 });
 
-  tl.at(0).banner("OPERATION WHITE FANG", "CHAPTER 4 - ARCTIC", 3200);
+  tl.at(0).banner("OPERATION WHITE FANG", "CHAPTER 4 - ARCTIC", 3200, { key: "banner.operation", paramKeys: { name: ["chapter.arctic.opName", "WHITE FANG"] }, subKey: "banner.chapterIntro", subParams: { n: 4 }, subParamKeys: { name: ["chapter.arctic.name", "ARCTIC"] } });
   tl.at(3).vee("interceptor", 3, C, { dx: 60 });
   tl.at(5).spawns("ice_turret", [L + 20, R - 20]);
   tl.at(7).vee("fighter_basic", 7, LC, { dx: 34 });
@@ -24,7 +25,7 @@ export function arctic(): ChapterScript {
   tl.at(25).column("ice_walker", 2, L + 30, { dy: 70 });
 
   // ---- blizzard 1
-  tl.at(29).banner("BLIZZARD", "VISIBILITY DROPPING", 2200).weather("blizzard", 0.6);
+  tl.at(29).banner("BLIZZARD", "VISIBILITY DROPPING", 2200, { key: "wave.arctic.blizzard", subKey: "wave.arctic.blizzard.sub" }).weather("blizzard", 0.6);
   tl.at(31).stream("interceptor", 4, LC, 500);
   tl.at(34).spawns("ice_turret", [L + 10, C, R - 10]);
   tl.at(36).vee("fighter_heavy", 3, C, { dx: 70, dy: 40 });
@@ -35,7 +36,7 @@ export function arctic(): ChapterScript {
   tl.at(50).weather("none", 0);
 
   // ---- armoured train
-  tl.at(53).banner("ARMOURED TRAIN", "DERAIL IT", 2200);
+  tl.at(53).banner("ARMOURED TRAIN", "DERAIL IT", 2200, { key: "wave.arctic.train", subKey: "wave.arctic.train.sub" });
   tl.at(54).armouredTrain(R - 60, 7);
   tl.at(55).pickup("bomb", RC).pickup("bomb", R - 30);
   tl.at(57).stream("fighter_basic", 6, L, 300);
@@ -47,28 +48,31 @@ export function arctic(): ChapterScript {
   tl.at(74).arc("fighter_basic_elite", 7, C, { dx: 130 });
 
   // ---- drone minefield
-  tl.at(79).banner("DRONE MINEFIELD", "SHOOT A PATH THROUGH", 2400);
+  tl.at(79).banner("DRONE MINEFIELD", "SHOOT A PATH THROUGH", 2400, { key: "wave.arctic.minefield", subKey: "wave.arctic.minefield.sub" });
   tl.at(80).droneMinefield(4, 6);
   tl.at(83).spawns("ice_turret", [L, R]);
-  tl.at(86).pickup("shield", C);
+  // round 5 balance P6: the t 86 shield pickup is gone
   tl.at(88).stream("interceptor", 3, RC, 500);
-  tl.at(91).spawn("destroyer", C).spawns("gunboat", [C]);
+  // round 5 (#7): the faster gunboat leads the destroyer down the lead instead of spawning inside it
+  tl.at(90).spawns("gunboat", [C]);
+  tl.at(91).spawn("destroyer", C);
   tl.at(94).line("fighter_basic", 6, C, { dx: 64 });
   tl.at(96).column("armored_vehicle", 3, L + 40, { dy: 56 }).column("armored_vehicle", 2, R - 40, { dy: 56 });
 
   // ---- naval group in the lead
-  tl.at(99).banner("ICEBREAKER GROUP", undefined, 2000);
+  tl.at(99).banner("ICEBREAKER GROUP", undefined, 2000, { key: "wave.arctic.icebreaker" });
   tl.at(100).spawn("destroyer", C).spawn("destroyer", C, undefined, -200);
   tl.at(101).spawns("ice_turret", [L + 20, R - 20]).spawns("missile_launcher", [LC]);
   tl.at(103).vee("fighter_heavy", 3, C, { dx: 70, dy: 40 });
-  tl.at(106).pickup("bomb", C).pickup("power", LC);
+  // round 5 balance P5: the power pickup that shared this beat is gone (2 scripted power-ups left)
+  tl.at(106).pickup("bomb", C);
   tl.at(108).stream("fighter_basic", 7, L, 280).stream("fighter_basic", 7, R, 280);
   tl.at(112).spawns("helicopter", [LC, RC]);
   tl.at(115).spawns("ice_walker", [L + 30, R - 30]);
   tl.at(118).spawn("bomber", LC).spawn("bomber", RC, undefined, -100);
 
   // ---- blizzard 2 (strong)
-  tl.at(123).banner("WHITEOUT", "HOLD YOUR LINE", 2200).weather("blizzard", 1).wind(-14);
+  tl.at(123).banner("WHITEOUT", "HOLD YOUR LINE", 2200, { key: "wave.arctic.whiteout", subKey: "wave.arctic.whiteout.sub" }).weather("blizzard", 1).wind(-14);
   tl.at(125).sideAmbush("interceptor", 3, "right", 160, 450);
   tl.at(127).spawns("ice_turret", [LC, RC]);
   tl.at(129).vee("fighter_basic_elite", 7, C, { dx: 40 });
@@ -80,9 +84,10 @@ export function arctic(): ChapterScript {
   tl.at(146).stream("fighter_basic", 6, LC, 280);
 
   // ---- outpost & run-in
-  tl.at(150).banner("POLAR OUTPOST", undefined, 2000).weather("none", 0);
+  tl.at(150).banner("POLAR OUTPOST", undefined, 2000, { key: "wave.arctic.outpost" }).weather("none", 0);
   tl.at(151).spawn("military_base", L + 60).spawn("radar_station", R - 50, undefined, -40);
-  tl.at(151.5).spawns("ice_turret", [LC, RC, R - 50]).spawn("hangar", R - 70, undefined, -160);
+  // round 5 (#7): ice turrets moved off the base (LC) and the radar (R - 50)
+  tl.at(151.5).spawns("ice_turret", [210, 290]).spawn("ice_turret", R - 50, undefined, -90).spawn("hangar", R - 70, undefined, -160);
   tl.at(153).pickup("bomb", LC).pickup("bomb", RC);
   tl.at(155).stream("interceptor_elite", 4, C, 450);
   tl.at(158).line("fighter_basic", 6, C, { dx: 64, y: -90 });
@@ -118,8 +123,9 @@ export function arctic(): ChapterScript {
         { id: "arc_vehicle", text: "Destroy 7 armoured vehicles", stat: "tag:vehicle", goal: 7, cmp: "gte", reward: 250 },
         { id: "arc_flare", text: "Finish using 3 flares or fewer", stat: "flaresUsed", goal: 3, cmp: "lte", reward: 300 },
       ],
-      reward: 1100,
-      medalScores: medals([43000, 58500, 73000, 86000], 0.7),
+      // round 5: R1 reward 1100 -> 1300; M1 starting guess gold / ace x1.25 (re-derive from round-5 QA)
+      reward: 1300,
+      medalScores: medals([43000, 58500, 91500, 107500], 0.7),
     },
     features: tl.features,
   };

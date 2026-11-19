@@ -27,6 +27,9 @@ export interface MoveState {
   sx: number;
   /** cached formation leader (re-validated by id + alive every step; pool objects are recycled) */
   leader: Enemy | null;
+  /** separation offset added on top of the authored path (see separation.ts; air units only) */
+  ox: number;
+  oy: number;
 }
 
 /** O(1) per step after the first lookup (CODE_REVIEW #17: was a find() per follower per step). */
@@ -48,7 +51,7 @@ function formationLeader(s: MoveState, leaderId: number, world: WorldAPI): Enemy
 export function moveState(e: Enemy): MoveState {
   let s = e.data.mv as MoveState | undefined;
   if (!s) {
-    s = { init: false, t: 0, x0: e.x, y0: e.y, stage: 0, stageT: 0, heading: 90, cx: e.x, cy: e.y, ang: 0, lockX: 0, lockY: 0, lvx: 0, lvy: 0, sx: 1, leader: null };
+    s = { init: false, t: 0, x0: e.x, y0: e.y, stage: 0, stageT: 0, heading: 90, cx: e.x, cy: e.y, ang: 0, lockX: 0, lockY: 0, lvx: 0, lvy: 0, sx: 1, leader: null, ox: 0, oy: 0 };
     e.data.mv = s;
   }
   return s;

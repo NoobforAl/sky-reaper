@@ -37,11 +37,13 @@ import {
 } from "../contracts";
 import { PlayerController, type PlayerHost } from "../player";
 import { computeLoadout, type FireContext, type PlayerBulletSpawn } from "../weapons";
+import { ANIM_QA, BURN_SECS, WRECK_SMOKE_EVERY, bankSelect, debrisKey } from "./anim";
 import { FXDEF } from "./fxdefs";
 import { Pool, makeRng } from "./pool";
 import type { Bullet, EnemyRT, FlareDecoy, Fx, FxInternalKind, Hazard, Pickup } from "./types";
 import { collideAll, updateBullets } from "./bullets";
 import { enemyKeys } from "./spritekeys";
+import { hasKey, t } from "../i18n";
 
 export const WORLD_TUNING = {
   pools: { playerBullets: 320, enemyBullets: 1400, enemies: 160, fx: 700, pickups: 96, hazards: 96 },
@@ -56,7 +58,36 @@ export const WORLD_TUNING = {
    * per-chapter enemy damage multiplier (CHAPTER_IDS order: pacific, jungle, desert, arctic, citadel).
    * Chapter 1 is the tutorial and stays gentle; the later chapters ramp so the player side scales with the campaign.
    */
-  chapterDmg: [0.8, 1.05, 1.15, 1.25, 1.35],
+  /** BALANCE_SPEC D1 [0.9, 1.2, 1.3, 1.4, 1.5] + section 11 knobs after round-5 bot runs: ch2 1.2 -> 1.3 (A1), ch3 1.3 -> 1.4 (A2) */
+  chapterDmg: [0.9, 1.3, 1.4, 1.4, 1.5],
+  /**
+   * BALANCE_SPEC P4: per-chapter multiplier on enemy drop chances. In-run power is the biggest DPS lever (x4.5),
+   * so it gets scarcer later on (a novice should reach the boss at power 3-4); repair / shield drops thin out too.
+   */
+  powerDropMul: [1, 0.7, 0.55, 0.45, 0.4],
+  sustainDropMul: [1, 1, 0.7, 0.6, 0.5],
+  /** safety net (docs/PERF_BOMBERS.md #5): carpet-bomb volleys beyond this many live enemy hazards are skipped */
+  maxEnemyHazards: 36,
+  /**
+   * BALANCE_SPEC section 7 THREAT rank (0..max). The meter fills while the player is alive and unhurt (+noHitPerSec/s)
+   * and per kill made at combo >= comboGate; a full meter raises the rank. Any landed hit empties the meter (rank kept),
+   * a death resets both. Effects per rank: enemy bullet speed, enemy fire rate (src/enemies), boss move rate
+   * (src/bosses), kill score.
+   */
+  threat: {
+    max: 3,
+    perLevel: 100,
+    noHitPerSec: 2,
+    perKillAtCombo: 1,
+    comboGate: 1.5,
+    bulletSpeedPerLevel: 0.08,
+    fireRatePerLevel: 0.1,
+    scorePerLevel: 0.25,
+  },
+  /** BALANCE_SPEC P7: during a boss fight flares clear normal bullets only within this fraction of their radius */
+  bossFlareBulletFrac: 0.5,
+  /** floating "+150" score popups (round3 #6); big = boss parts / boss kill (longer life) */
+  popups: { max: 24, life: 0.9, bigLife: 1.25, rise: 26, mergeSec: 0.1, mergeDist: 40 },
   spdBase: 0.92,
   spdSlope: 0.08,
   scrollEase: 220,
@@ -100,6 +131,26 @@ export interface RunStatsRT extends RunStats {
   /** score multiplier 1..2 (not part of the contract; HUD may read it) */
   combo: number;
   comboTimer: number;
+  /** THREAT rank 0..3 (BALANCE_SPEC section 7), its meter 0..perLevel and the best rank this run */
+  threat: number;
+  threatMeter: number;
+  threatMax: number;
+}
+
+/** one floating score popup (pooled; the renderer re-formats the text when `dirty`) */
+export interface ScorePopup {
+  active: boolean;
+  x: number;
+  y: number;
+  t: number;
+  life: number;
+  value: number;
+  combo: number;
+  big: boolean;
+  /** set by the world when value / style changed; cleared by the renderer after re-formatting */
+  dirty: boolean;
+  /** renderer-owned cache (formatted text) */
+  cache: unknown;
 }
 
 type Listener = (p: never) => void;
@@ -224,6 +275,10 @@ export class World implements WorldAPI, FireContext, PlayerHost {
   private errCount: Record<string, number> = {};
   /** gameplay pause of fx timers (hitstop) */
   hitstop = 0;
+  /** floating score popups (fixed pool of WORLD_TUNING.popups.max, oldest recycled) */
+  readonly popups: ScorePopup[] = [];
+  /** live enemy-class hazards (perf cap, see maxEnemyHazards) */
+  private enemyHazardN = 0;
 
   // ------------------------------------------------------------ presentation state
   shakePow = 0;
@@ -287,7 +342,11 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       spawned: 0,
       combo: 1,
       comboTimer: 0,
+      threat: 0,
+      threatMeter: 0,
+      threatMax: 0,
     };
+    for (let i = 0; i < T.popups.max; i++) this.popups.push({ active: false, x: 0, y: 0, t: 0, life: 1, value: 0, combo: 1, big: false, dirty: false, cache: null });
 
     this.pBullets = new Pool(T.pools.playerBullets, makeBullet);
     this.eBullets = new Pool(T.pools.enemyBullets, makeBullet);
@@ -307,6 +366,8 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       incomingMissiles: this.missileList,
       banner: null,
       fps: 60,
+      threat: 0,
+      threatProgress: 0,
     };
 
     // internal event hooks
@@ -323,6 +384,11 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       this.bossDefeatedEmitted = true;
       this.stats.bossDefeated = true;
     });
+    // THREAT: a death drops the rank to 0 (BALANCE_SPEC section 7 reset rules)
+    this.bus.on("playerDied", () => {
+      this.stats.threat = 0;
+      this.stats.threatMeter = 0;
+    });
   }
 
   // ================================================================== WorldAPI getters
@@ -332,6 +398,10 @@ export class World implements WorldAPI, FireContext, PlayerHost {
   /** 0-based chapter index (CHAPTER_IDS order); read by src/patterns/tiers.ts chapterIndexOf() */
   get chapterIndex(): number {
     return Math.max(0, (CHAPTER_IDS as readonly string[]).indexOf(this.chapter.id));
+  }
+  /** THREAT rank 0..3 (BALANCE_SPEC section 7); src/enemies + src/bosses read it through WorldAPI.threat */
+  get threat(): number {
+    return this.stats.threat;
   }
   get enemies(): ReadonlyArray<Enemy> {
     return this.enemyPool.items;
@@ -411,6 +481,9 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       this.stats.comboTimer -= dt;
       if (this.stats.comboTimer <= 0) this.stats.combo = 1;
     }
+    // THREAT meter: fills while alive and unhurt (onPlayerHit empties it)
+    if (this.state === "playing" && this.pc.state.alive) this.addThreat(T.threat.noHitPerSec * dt);
+    this.updatePopups(dt);
 
     // presentation timers
     if (this.shakeT > 0) this.shakeT -= dt;
@@ -529,6 +602,7 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     if (!this.bossDefeatedEmitted && this.bossId) this.events.emit("bossDefeated", { bossId: this.bossId });
     this.stats.bossDefeated = true;
     this.stats.score += WORLD_TUNING.bossDefeatBonus;
+    this.addPopup(this.bossDeadX, this.bossDeadY, WORLD_TUNING.bossDefeatBonus, this.stats.combo, true);
     this.completeChapter();
   }
 
@@ -548,6 +622,7 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       if (e.alive) this.killEnemy(e, false);
     }
     this.hazards.clear();
+    this.enemyHazardN = 0;
     this.events.emit("chapterComplete", { chapterId: this.chapter.id });
     this.events.emit("banner", { text: "MISSION COMPLETE", subtext: this.chapter.name, ms: 3000 });
     this.audio.playMusic(null, { fadeMs: 800 });
@@ -580,6 +655,7 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       this.shootables = 0;
       this.eDeadN = 0;
       this.hazards.clear();
+      this.enemyHazardN = 0;
       // dropped enemies sit in the graveyard until graveSec of sim time passes; no sim time passes for them here,
       // so drain it every chunk or long skips exhaust the enemy pool (boss parts then fail to spawn).
       this.cleanupEnemies(WORLD_TUNING.graveSec + 1);
@@ -622,6 +698,9 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     e.lastX = x;
     e.lastY = y;
     e.bank = 0;
+    e.bankSel = 0;
+    e.fireT = 99;
+    e.fireDir = 90;
     e.keys = enemyKeys(def);
     e.bossId = o.bossId;
     e.invuln = false;
@@ -633,7 +712,8 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     e.immuneCd = 0;
     e.smokeT = 0;
     e.graveT = 0;
-    e.counted = def.destructible !== false && !o.bossId;
+    // wide flank copies (LevelRunner sets data.wideCopy) do not count toward spawned / killRate (QA R4-5)
+    e.counted = def.destructible !== false && !o.bossId && o.data?.wideCopy !== true;
     if (e.counted) {
       this.stats.spawned++;
       // keep killRate live (it used to update only on kills, so it read 100% until the first counted kill)
@@ -677,7 +757,8 @@ export class World implements WorldAPI, FireContext, PlayerHost {
         const f = e.hp / e.maxHp;
         if (f < 0.5) {
           e.smokeT -= dt;
-          if (e.smokeT <= 0) {
+          // rate-limited per unit, and skipped while the shared fx pool is busy (bomber waves, big explosions)
+          if (e.smokeT <= 0 && this.fxPool.size < this.fxPool.capacity * 0.75) {
             e.smokeT = f < 0.25 ? 0.07 : 0.14;
             this.spawnFxI(f < 0.25 && this.frng() < 0.6 ? "fire" : "smoke", e.x + (this.frng() - 0.5) * e.hw, e.y + (this.frng() - 0.5) * e.hh, 1, def.layer === "ground");
           }
@@ -709,7 +790,9 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     if (dt > 0) {
       const tb = Math.max(-1, Math.min(1, mdx / dt / 140));
       e.bank += (tb - e.bank) * Math.min(1, dt * 8);
+      e.bankSel = bankSelect(e.bankSel, e.bank);
     }
+    if (e.fireT < 99) e.fireT += dt;
     if (info && info.frames > 1) {
       const fps = info.fps ?? 8;
       if (fps <= 0) e.frame = 0; // state strip, not an animation
@@ -829,10 +912,17 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       this.logErr("enemySystem.onDeath", err);
     }
     const sz = def.explosion;
+    // aircraft tumble away under the explosion (ANIM_SPEC §4); boss parts stay with their rig
+    if (def.layer === "air" && !er.bossId && er.onScreen && ANIM_QA.enabled) this.spawnSpinout(er);
     this.boom(er.x, er.y, sz, def.layer === "ground");
     if (def.layer === "ground" && this.svc.sprites.has(er.keys.dead)) {
       const w = this.spawnFxI("wreck", er.x, er.y, 1, true);
-      if (w) w.sprite = er.keys.dead;
+      if (w) {
+        w.sprite = er.keys.dead;
+        w.sprite2 = ANIM_QA.enabled && !er.bossId && this.svc.sprites.has(er.keys.burn) ? er.keys.burn : "";
+        w.frame = er.id % 3;
+        w.aux = WRECK_SMOKE_EVERY * this.frng();
+      }
     }
     let score = 0;
     if (byPlayer) {
@@ -840,8 +930,12 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       if (st.comboTimer > 0) st.combo = Math.min(WORLD_TUNING.comboMax, st.combo + WORLD_TUNING.comboStep);
       else st.combo = 1;
       st.comboTimer = WORLD_TUNING.comboWindow;
-      score = Math.round(def.score * st.combo);
+      const TT = WORLD_TUNING.threat;
+      score = Math.round(def.score * st.combo * (1 + TT.scorePerLevel * st.threat));
       st.score += score;
+      if (st.combo >= TT.comboGate) this.addThreat(TT.perKillAtCombo);
+      // start a little above the wreck so the explosion sprite does not hide the first half of the popup
+      if (score > 0) this.addPopup(er.x, er.y - Math.min(16, er.hh * 0.6), score, st.combo, !!er.bossId);
       st.kills++;
       if (def.layer === "air") st.airKills++;
       else st.groundKills++;
@@ -867,11 +961,20 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     }
   }
 
+  /** BALANCE_SPEC P4: chapter multiplier on power / sustain drop chances */
+  private dropMul(kind: PickupKind): number {
+    const T = WORLD_TUNING;
+    const ci = this.chapterIndex;
+    if (kind === "power") return T.powerDropMul[ci] ?? 1;
+    if (kind === "repair" || kind === "shield") return T.sustainDropMul[ci] ?? 1;
+    return 1;
+  }
+
   private dropsFor(e: EnemyRT): void {
     const drops = e.def.drops;
     for (let i = 0; i < drops.length; i++) {
       const d = drops[i]!;
-      if (this.rngFn() > d.chance) continue;
+      if (this.rngFn() > d.chance * this.dropMul(d.kind)) continue;
       const lo = d.min ?? 1;
       const hi = d.max ?? lo;
       const n = lo + Math.floor(this.rngFn() * (hi - lo + 1));
@@ -889,15 +992,43 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     this.initBullet(b, spec, !isEnemy);
     if (isEnemy) {
       b.damage = spec.damage * this.dmgScale;
+      // THREAT bullet speed (+8 %/rank, never missiles) is applied where the pattern is built (src/patterns tieredPattern
+      // for regular enemies, boss fire() per BALANCE_SPEC B2) so the runner's speed caps still clamp it; not here (no double scale)
       b.speed = spec.speed * this.spdScale;
       this.setVel(b);
       if (b.hp > 0) this.shootables++;
+      // gun recoil / muzzle flash clock on the shooter (ANIM_SPEC §3); missiles keep their launch smoke instead
+      if (b.ownerId && !b.isMissile) {
+        const owner = this.fireOwner(b.ownerId);
+        if (owner) {
+          owner.fireT = 0;
+          owner.fireDir = b.angle;
+        }
+      }
       if (b.isMissile) {
         if (this.bus.has("missileLaunched")) this.events.emit("missileLaunched", { x: b.x, y: b.y, id: b.id });
         this.playSfx("missile_launch", { volume: 0.7 });
         this.playSfx("warning", { volume: 0.7 });
       }
     }
+  }
+
+  /** last ownerId -> enemy lookup (a volley spawns many bullets from one owner in the same step) */
+  private fireOwnerId = 0;
+  private fireOwnerE: EnemyRT | null = null;
+  private fireOwner(id: number): EnemyRT | null {
+    const c = this.fireOwnerE;
+    if (id === this.fireOwnerId && c && c.alive && c.id === id) return c;
+    const list = this.enemyPool.items;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i]!;
+      if (e.id === id && e.alive) {
+        this.fireOwnerId = id;
+        this.fireOwnerE = e;
+        return e;
+      }
+    }
+    return null;
   }
 
   /** player projectile (weapons module) */
@@ -981,8 +1112,11 @@ export class World implements WorldAPI, FireContext, PlayerHost {
   }
 
   spawnHazard(spec: HazardSpawn): void {
+    const enemy = spec.damageClass === "enemy";
+    if (enemy && this.enemyHazardN >= WORLD_TUNING.maxEnemyHazards) return;
     const h = this.hazards.acquire();
     if (!h) return;
+    if (enemy) this.enemyHazardN++;
     h.x = spec.x;
     h.y = spec.y;
     h.radius = spec.radius;
@@ -1070,6 +1204,8 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     f.g = d.g;
     f.b = d.b;
     f.frame = 0;
+    f.sprite2 = "";
+    f.aux = 0;
     if (d.spread > 0) {
       const a = this.frng() * 6.2832;
       const s = d.spread * (0.4 + this.frng() * 0.6);
@@ -1083,13 +1219,42 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     return f;
   }
 
+  /** dying aircraft: damaged body tumbling away for SPINOUT_LIFE (drawn with the air layer, under the explosion) */
+  private spawnSpinout(e: EnemyRT): void {
+    const k = e.keys;
+    const reg = this.svc.sprites;
+    const key = reg.has(k.dmg) ? k.dmg : reg.has(k.base) ? k.base : "";
+    if (!key) return;
+    const f = this.spawnFxI("spinout", e.x, e.y, 1, false);
+    if (!f) return;
+    f.sprite = key;
+    f.frame = e.frame;
+    f.rot = e.facing - 90;
+    const dir = e.bank < -0.1 ? -1 : e.bank > 0.1 ? 1 : e.id & 1 ? 1 : -1;
+    f.vrot = dir * (360 + 180 * this.frng());
+    f.vx = e.vx * 0.5;
+    f.vy = e.vy * 0.5 + 40;
+  }
+
   /** composite explosion: sprite + sparks + debris + shake + sfx */
   boom(x: number, y: number, size: "s" | "m" | "l", ground: boolean, sfx = true): void {
     this.spawnFxI(size === "s" ? "explosion_s" : size === "m" ? "explosion_m" : "explosion_l", x, y, 1, ground);
     const n = size === "s" ? 3 : size === "m" ? 6 : 12;
     if (this.fxPool.size < this.fxPool.capacity * 0.8) {
       for (let i = 0; i < n; i++) this.spawnFxI("spark", x, y, 1, false);
-      for (let i = 0; i < (n >> 1); i++) this.spawnFxI("debris", x, y, 1, false);
+      // debris chunks (ANIM_SPEC §4): s 3, m 4, l 6 (one of them a debris_m); frame = chunk variant
+      const anim = ANIM_QA.enabled;
+      const nd = !anim ? n >> 1 : size === "s" ? 3 : size === "m" ? 4 : 6;
+      const dk = anim ? debrisKey(size) : "";
+      for (let i = 0; i < nd; i++) {
+        const d = this.spawnFxI("debris", x, y, 1, false);
+        if (!d) break;
+        if (!anim) continue;
+        d.sprite = size === "l" && i === nd - 1 ? "debris_m" : dk;
+        d.frame = i & 3;
+        d.rot = this.frng() * 360;
+        d.vrot = (this.frng() < 0.5 ? -1 : 1) * (200 + 520 * this.frng());
+      }
     }
     if (size === "l") this.spawnFxI("ring", x, y, 2.2, false);
     if (sfx) this.playSfx(size === "s" ? "explode_s" : size === "m" ? "explode_m" : "explode_l");
@@ -1104,6 +1269,79 @@ export class World implements WorldAPI, FireContext, PlayerHost {
   onPlayerHit(): void {
     this.stats.combo = 1;
     this.stats.comboTimer = 0;
+    // THREAT: any landed hit (shield or hull) empties the meter; the rank is kept
+    this.stats.threatMeter = 0;
+  }
+
+  /** THREAT meter gain; raises the rank when full (BALANCE_SPEC section 7) */
+  private addThreat(v: number): void {
+    const st = this.stats;
+    const TT = WORLD_TUNING.threat;
+    if (st.threat >= TT.max) {
+      st.threatMeter = TT.perLevel;
+      return;
+    }
+    st.threatMeter += v;
+    if (st.threatMeter >= TT.perLevel) {
+      st.threat++;
+      st.threatMeter = st.threat >= TT.max ? TT.perLevel : 0;
+      if (st.threat > st.threatMax) st.threatMax = st.threat;
+      this.events.emit("banner", { text: threatBanner(st.threat), ms: 1200 });
+      this.playSfx("warning", { volume: 0.5 });
+    }
+  }
+
+  // ================================================================== score popups
+  /** a kill scored `value` at (x, y): merge into a fresh nearby popup, else take a free slot (or recycle the oldest) */
+  addPopup(x: number, y: number, value: number, combo: number, big: boolean): void {
+    if (this.settings.scorePopups === false) return;
+    const P = WORLD_TUNING.popups;
+    const list = this.popups;
+    let free: ScorePopup | null = null;
+    let oldest: ScorePopup | null = null;
+    for (let i = 0; i < list.length; i++) {
+      const q = list[i]!;
+      if (!q.active) {
+        if (!free) free = q;
+        continue;
+      }
+      if (q.t <= P.mergeSec) {
+        const dx = q.x - x;
+        const dy = q.y - y;
+        if (dx * dx + dy * dy <= P.mergeDist * P.mergeDist) {
+          q.value += value;
+          if (combo > q.combo) q.combo = combo;
+          if (big && !q.big) {
+            q.big = true;
+            q.life = P.bigLife;
+          }
+          q.dirty = true;
+          return;
+        }
+      }
+      if (!oldest || q.t > oldest.t) oldest = q;
+    }
+    const q = free ?? oldest;
+    if (!q) return;
+    q.active = true;
+    q.x = x;
+    q.y = y;
+    q.t = 0;
+    q.life = big ? P.bigLife : P.life;
+    q.value = value;
+    q.combo = combo;
+    q.big = big;
+    q.dirty = true;
+  }
+
+  private updatePopups(dt: number): void {
+    const list = this.popups;
+    for (let i = 0; i < list.length; i++) {
+      const q = list[i]!;
+      if (!q.active) continue;
+      q.t += dt;
+      if (q.t >= q.life) q.active = false;
+    }
   }
 
   /**
@@ -1183,11 +1421,15 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     this.flash([255, 255, 220], 120);
     const list = this.eBullets.items;
     const r2 = radius * radius;
+    // BALANCE_SPEC P7: in boss fights flares clear normal bullets only near the ship (missiles still die / divert)
+    const bf = WORLD_TUNING.bossFlareBulletFrac;
+    const bulletR2 = this.boss ? r2 * bf * bf : r2;
     for (let i = list.length - 1; i >= 0; i--) {
       const b = list[i]!;
       const dx = b.x - x;
       const dy = b.y - y;
-      const inside = dx * dx + dy * dy <= r2;
+      const d2 = dx * dx + dy * dy;
+      const inside = d2 <= r2;
       if (b.decoyable || b.isMissile) {
         if (inside) {
           this.spawnFxI("explosion_s", b.x, b.y, 1, false);
@@ -1196,7 +1438,7 @@ export class World implements WorldAPI, FireContext, PlayerHost {
         } else if (b.turnRate > 0) {
           b.divert = WORLD_TUNING.flareDivertSec;
         }
-      } else if (inside && b.hp <= 0 && b.radius <= 9) {
+      } else if (d2 <= bulletR2 && b.hp <= 0 && b.radius <= 9) {
         this.spawnFxI("spark", b.x, b.y, 1, false);
         this.freeEnemyBullet(i, b);
       }
@@ -1358,6 +1600,11 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     this.shake(radius >= 40 ? 4 : 1.5, 140);
   }
 
+  private releaseHazard(i: number, h: Hazard): void {
+    if (h.cls === "enemy" && this.enemyHazardN > 0) this.enemyHazardN--;
+    this.hazards.releaseAt(i);
+  }
+
   private updateHazards(dt: number): void {
     const list = this.hazards.items;
     for (let i = list.length - 1; i >= 0; i--) {
@@ -1377,11 +1624,11 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       } else {
         h.blastT += dt;
         if (h.blastT > 0.3) {
-          this.hazards.releaseAt(i);
+          this.releaseHazard(i, h);
           continue;
         }
       }
-      if (h.y > GAME_H + h.radius + 20) this.hazards.releaseAt(i);
+      if (h.y > GAME_H + h.radius + 20) this.releaseHazard(i, h);
     }
   }
 
@@ -1440,6 +1687,16 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       f.x += f.vx * dt;
       f.y += (f.vy + (f.scroll ? sp : 0)) * dt;
       f.rot += f.vrot * dt;
+      // burning wreck: a smoke wisp every WRECK_SMOKE_EVERY s while on screen (pooled, skipped when the pool is busy)
+      if (f.sprite2 !== "" && f.t < BURN_SECS) {
+        f.aux -= dt;
+        if (f.aux <= 0) {
+          f.aux += WRECK_SMOKE_EVERY;
+          if (f.y > -20 && f.y < GAME_H + 20 && this.fxPool.size < this.fxPool.capacity * 0.6) {
+            this.spawnFxI("smoke", f.x + (this.frng() - 0.5) * 12, f.y - 4, 1, true);
+          }
+        }
+      }
     }
     // player damage smoke
     const p = this.pc.state;
@@ -1469,6 +1726,9 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     h.hint = this.runner.hint;
     h.boss = this.boss ? this.boss.hud() : null;
     h.fps = this.fps;
+    const st = this.stats;
+    h.threat = st.threat;
+    h.threatProgress = st.threat >= WORLD_TUNING.threat.max ? 1 : Math.max(0, Math.min(1, st.threatMeter / WORLD_TUNING.threat.perLevel));
     // banner
     const b = this.banner;
     if (b) {
@@ -1533,6 +1793,12 @@ export class World implements WorldAPI, FireContext, PlayerHost {
 }
 
 const D2R = Math.PI / 180;
+
+/** "THREAT I".."THREAT III" banner (i18n key banner.threat, {n} = roman numeral; English fallback) */
+function threatBanner(level: number): string {
+  const roman = level >= 3 ? "III" : level === 2 ? "II" : "I";
+  return hasKey("banner.threat") ? t("banner.threat", { n: roman }) : "THREAT " + roman;
+}
 
 const NEUTRAL_INPUT: InputState = {
   moveX: 0,
@@ -1636,12 +1902,15 @@ function makeEnemy(): EnemyRT {
     lastX: 0,
     lastY: 0,
     bank: 0,
+    bankSel: 0,
+    fireT: 99,
+    fireDir: 90,
     keys: enemyKeys(NULL_DEF),
   };
 }
 
 function makeFx(): Fx {
-  return { kind: "hit", sprite: "", x: 0, y: 0, vx: 0, vy: 0, gravity: 0, t: 0, life: 1, delay: 0, scale: 1, rot: 0, vrot: 0, scroll: false, r: 255, g: 255, b: 255, frame: 0 };
+  return { kind: "hit", sprite: "", x: 0, y: 0, vx: 0, vy: 0, gravity: 0, t: 0, life: 1, delay: 0, scale: 1, rot: 0, vrot: 0, scroll: false, r: 255, g: 255, b: 255, frame: 0, sprite2: "", aux: 0 };
 }
 
 function makeHazard(): Hazard {

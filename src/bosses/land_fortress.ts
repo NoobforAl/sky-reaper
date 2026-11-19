@@ -6,6 +6,7 @@
  *  Parts change attacks: both treads destroyed -> immobile, no ram; big turret destroyed -> core takes over artillery.
  */
 import { GAME_W, type WorldAPI } from "../contracts";
+import { tr } from "../levels/i18n";
 import { BP } from "./attacks";
 import { BossBase, roam, type PartRT } from "./framework";
 
@@ -16,7 +17,7 @@ export class LandFortressBoss extends BossBase {
   private immobile = false;
 
   constructor(world: WorldAPI) {
-    super("land_fortress", world);
+    super("land_fortress", world, 1.75); // round 5 B1: 1 -> 1.75
     this.holdY = 220;
     this.entrySec = 4.5;
     this.addPart("tread", "tread_l", -128, 0);
@@ -56,7 +57,7 @@ export class LandFortressBoss extends BossBase {
   }
 
   private startRam(b: BossBase): void {
-    b.world.events.emit("banner", { text: "RAMMING SPEED", subtext: "GET CLEAR", ms: 1200 });
+    b.world.events.emit("banner", { text: tr("bossBanner.fortress.ramming", "RAMMING SPEED"), subtext: tr("bossBanner.fortress.ramming.sub", "GET CLEAR"), ms: 1200 });
     b.world.shake(4, 900);
     // crush zone: where the fortress front edge will land
     const fy = this.holdY + 230 + 165;
@@ -69,7 +70,7 @@ export class LandFortressBoss extends BossBase {
   protected onPartLost(p: PartRT): void {
     if (p.kind === "tread" && !this.alive("tread")) {
       this.immobile = true;
-      this.world.events.emit("banner", { text: "FORTRESS IMMOBILISED", ms: 1600 });
+      this.world.events.emit("banner", { text: tr("bossBanner.fortress.immobilised", "FORTRESS IMMOBILISED"), ms: 1600 });
     }
   }
 

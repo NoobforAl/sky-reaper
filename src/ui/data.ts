@@ -1,6 +1,7 @@
 /** Chapter info for menus, with fallbacks while src/levels is still a stub. */
 import { CHAPTER_IDS, type ChapterDef, type ChapterId, type ObjectiveDef } from "../contracts";
 import { levels } from "../levels";
+import { content } from "./i18n";
 
 export interface ChapterInfo {
   id: ChapterId;
@@ -51,9 +52,9 @@ function fromDef(c: ChapterDef): ChapterInfo {
   return {
     id: c.id,
     index: c.index,
-    name: c.name,
-    subtitle: c.subtitle,
-    briefing: c.briefing,
+    name: content(`chapter.${c.id}.name`, c.name),
+    subtitle: content(`chapter.${c.id}.subtitle`, c.subtitle),
+    briefing: content(`chapter.${c.id}.briefing`, c.briefing),
     palette: c.palette,
     objectives: c.objectives ?? [],
     medalScores: c.medalScores,
@@ -72,7 +73,8 @@ export function chapterList(): ChapterInfo[] {
     const def = real.find((c) => c.id === id);
     if (def) return fromDef(def);
     const f = FALLBACK[id];
-    return { id, index: i, ...f, objectives: [], medalScores: [20000, 40000, 60000, 80000] as [number, number, number, number], reward: 0 };
+    const loc = { name: content(`chapter.${id}.name`, f.name), subtitle: content(`chapter.${id}.subtitle`, f.subtitle), briefing: content(`chapter.${id}.briefing`, f.briefing) };
+    return { id, index: i, ...f, ...loc, objectives: [], medalScores: [20000, 40000, 60000, 80000] as [number, number, number, number], reward: 0 };
   });
 }
 

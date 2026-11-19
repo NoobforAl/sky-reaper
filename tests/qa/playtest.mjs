@@ -6,6 +6,8 @@
  *   node tests/qa/playtest.mjs boss      (godMode, starts just before the boss; time-to-kill per phase)
  *   node tests/qa/playtest.mjs fps       (real time, GPU Edge; 35 s of early waves + 35 s of boss per chapter/layout)
  *   node tests/qa/playtest.mjs tutorial  (chapter 1 real time, screenshots at every tutorial hint + vulnerability markers)
+ * Flags: --nododge | --novice (+ --replan=18) | --replan=12 (human) | --budget (play/boss: start each chapter with the
+ *   BALANCE_SPEC section 11 reference upgrade loadout for that chapter; default is a fresh save with 0 upgrades) | --suffix=x
  * Output: test-results/qa/<mode>.json (+ screenshots under test-results/qa/).
  * The bot lives in tests/qa/bot.js and only reads/drives the game through window.__sky.
  */
@@ -40,6 +42,15 @@ const REPLAN = Number(args.replan || 1);
 /** --novice: short perception (150u) + 0.25 s look-ahead, no panic flares (combine with --replan=18) */
 const NOVICE = !!args.novice;
 const BOSS_T = { pacific: 197, jungle: 200, desert: 193, arctic: 197, citadel: 198 };
+/** --budget: BALANCE_SPEC section 1.3 / 11 reference loadout (upgrade levels expected at the start of each chapter) */
+const BUDGET = !!args.budget;
+const BUDGET_UPGRADES = {
+  pacific: {},
+  jungle: { damage: 1, fireRate: 1, hull: 1 },
+  desert: { damage: 2, fireRate: 2, hull: 1, shield: 1 },
+  arctic: { damage: 3, fireRate: 3, hull: 2, shield: 1 },
+  citadel: { damage: 4, fireRate: 4, hull: 2, shield: 2 },
+};
 const VIEWPORT = { wide: { width: 1920, height: 1080 }, portrait: { width: 540, height: 960 } };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -68,7 +79,19 @@ async function openGame(browser, layout) {
   return { ctx, page, errors, gl };
 }
 
+/** write the chapter's budget loadout into the (per-context, in-memory) save before the game scene reads it */
+async function applyBudget(page, chapterId) {
+  const ups = BUDGET ? BUDGET_UPGRADES[chapterId] || {} : {};
+  await page.evaluate((u) => {
+    const d = window.__sky.services.save.data;
+    const base = { damage: 0, fireRate: 0, hull: 0, shield: 0, bombs: 0, speed: 0, flares: 0 };
+    d.upgrades = { ...base, ...(d.upgrades || {}), ...u };
+  }, ups);
+  return ups;
+}
+
 async function startChapter(page, chapterId, params, botOpts) {
+  await applyBudget(page, chapterId);
   await page.evaluate(([id, p]) => window.__sky.goto("game", { chapterId: id, ...p }), [chapterId, params]);
   await page.waitForFunction(() => !!window.__sky?.game?.world, null, { timeout: 20000 });
   await page.evaluate((o) => window.__qaInstall(o), botOpts);
@@ -96,6 +119,8 @@ const snapStats = (page) =>
       tagKills: { ...s.tagKills },
       lives: w.player.lives,
       power: w.player.power,
+      threat: w.threat ?? 0,
+      threatMax: s.threatMax ?? 0,
       boss: w.boss ? w.boss.hud() : null,
     };
   });
@@ -137,6 +162,7 @@ async function runPlay(browser, chapter, layout, seed, opts) {
     layout,
     seed,
     gl,
+    budget: BUDGET ? BUDGET_UPGRADES[chapter] || {} : null,
     wallSec: Math.round((Date.now() - t0) / 1000),
     outcome: log?.outcome ?? "incomplete",
     simEnd: log?.endT ?? stats?.time,
@@ -160,7 +186,7 @@ async function pool(jobs, n) {
       try {
         const r = await j();
         out.push(r);
-        console.log(`[qa] ${r.chapter}/${r.layout}/s${r.seed}: ${r.outcome} t=${r.simEnd?.toFixed?.(1)} deaths=${r.stats?.deaths} score=${r.finalScore ?? r.stats?.score} credits=${r.credits} maxB=${r.log?.maxBullets} zeroEsc=${r.log?.escape?.zero} wall=${r.wallSec}s`);
+        console.log(`[qa] ${r.chapter}/${r.layout}/s${r.seed}${r.budget ? "/budget" : ""}: ${r.outcome} t=${r.simEnd?.toFixed?.(1)} deaths=${r.stats?.deaths} dmg=${r.stats?.damageTaken} pow=${r.stats?.power} thrMax=${r.stats?.threatMax} score=${r.finalScore ?? r.stats?.score} credits=${r.credits} maxB=${r.log?.maxBullets} zeroEsc=${r.log?.escape?.zero} wall=${r.wallSec}s`);
       } catch (e) {
         console.log("[qa] job failed", String(e).slice(0, 400));
         out.push({ error: String(e).slice(0, 400) });

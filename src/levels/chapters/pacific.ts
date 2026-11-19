@@ -12,7 +12,7 @@ export function pacific(): ChapterScript {
   const tl = new TL();
 
   // ---- 0-25 s: movement + guns
-  tl.at(0).banner("OPERATION TIDEBREAK", "CHAPTER 1 - PACIFIC", 3200).tutorial("move");
+  tl.at(0).banner("OPERATION TIDEBREAK", "CHAPTER 1 - PACIFIC", 3200, { key: "banner.operation", paramKeys: { name: ["chapter.pacific.opName", "TIDEBREAK"] }, subKey: "banner.chapterIntro", subParams: { n: 1 }, subParamKeys: { name: ["chapter.pacific.name", "PACIFIC"] } }).tutorial("move");
   tl.at(4).line("fighter_basic", 3, C, { dx: 70 });
   tl.at(7).tutorial("fire_air");
   tl.at(9).vee("fighter_basic", 5, LC);
@@ -22,7 +22,7 @@ export function pacific(): ChapterScript {
   tl.at(21).stream("fighter_basic", 5, R, 450);
 
   // ---- 25-45 s: bombs vs ships, bracket legend
-  tl.at(25).banner("SURFACE CONTACTS", "BOMBS SINK SHIPS", 2400).tutorial("bomb_ground");
+  tl.at(25).banner("SURFACE CONTACTS", "BOMBS SINK SHIPS", 2400, { key: "wave.pacific.surface", subKey: "wave.pacific.surface.sub" }).tutorial("bomb_ground");
   tl.at(26).pickup("bomb", LC).spawn("gunboat", LC);
   tl.at(29).spawn("gunboat", RC);
   tl.at(31).line("fighter_basic", 3, C, { dx: 90 });
@@ -41,7 +41,7 @@ export function pacific(): ChapterScript {
   tl.at(44).vee("fighter_basic", 5, C);
 
   // ---- 48-80 s: pickups, helicopters, first missile carrier + flares
-  tl.at(48).banner("WAVE 2", "ESCORT GROUP", 2000).tutorial("pickups");
+  tl.at(48).banner("WAVE 2", "ESCORT GROUP", 2000, { key: "banner.wave", params: { n: 2 }, subKey: "wave.pacific.escort.sub" }).tutorial("pickups");
   tl.at(50).spawns("helicopter", [L + 20, R - 20]);
   tl.at(52).pickup("shield", C);
   tl.at(54).stream("fighter_basic", 6, LC, 380);
@@ -59,9 +59,12 @@ export function pacific(): ChapterScript {
   tl.at(80).tutorial("weapons");
   tl.at(82).sideAmbush("interceptor", 4, "left", 150);
   tl.at(86).sideAmbush("interceptor", 4, "right", 210);
-  tl.at(90).banner("WAVE 3", "BOMBER RUN", 2000);
-  tl.at(91).spawn("bomber", LC).vee("fighter_basic", 3, LC, { y: -110 });
-  tl.at(95).spawn("bomber", RC).vee("fighter_basic", 3, RC, { y: -110 });
+  tl.at(90).banner("WAVE 3", "BOMBER RUN", 2000, { key: "banner.wave", params: { n: 3 }, subKey: "wave.pacific.bomberRun.sub" });
+  // round 5 (#7): the escorts (105 u/s) lead the slow bombers (45 u/s) instead of spawning behind and flying through them
+  tl.at(90.3).vee("fighter_basic", 3, LC);
+  tl.at(91).spawn("bomber", LC);
+  tl.at(94.3).vee("fighter_basic", 3, RC);
+  tl.at(95).spawn("bomber", RC);
   tl.at(99).pickup("power", C);
   tl.at(100).spawns("gunboat", [L + 40, C, R - 40]);
   tl.at(103).stream("fighter_basic", 5, L, 400).stream("fighter_basic", 5, R, 400);
@@ -71,7 +74,7 @@ export function pacific(): ChapterScript {
   tl.at(116).spawn("destroyer", LC).spawn("gunboat", RC);
 
   // ---- 120-160 s: interceptors, second platform, mixed
-  tl.at(121).banner("WAVE 4", "INTERCEPTORS", 2000);
+  tl.at(121).banner("WAVE 4", "INTERCEPTORS", 2000, { key: "banner.wave", params: { n: 4 }, subKey: "wave.pacific.interceptors.sub" });
   tl.at(122).spawns("interceptor", [LC, RC]);
   tl.at(125).vee("fighter_basic", 5, C);
   tl.at(128).feature("runway", 150, 520);
@@ -80,7 +83,8 @@ export function pacific(): ChapterScript {
   tl.at(131).pickup("bomb", 150);
   tl.at(134).stream("fighter_basic", 6, R, 350);
   tl.at(138).spawns("interceptor", [L, C, R]);
-  tl.at(142).spawn("bomber", C).line("fighter_basic", 4, C, { dx: 70, y: -120 });
+  tl.at(141.3).line("fighter_basic", 4, C, { dx: 70 });
+  tl.at(142).spawn("bomber", C);
   tl.at(146).spawns("helicopter", [L + 30, C, R - 30]);
   tl.at(150).pickup("repair", C);
   tl.at(151).spawn("missile_carrier", RC).spawns("gunboat", [L + 30, LC]);
@@ -88,7 +92,7 @@ export function pacific(): ChapterScript {
   tl.at(156).sideAmbush("interceptor", 5, "right", 120, 220);
 
   // ---- 160-195 s: carrier group screen
-  tl.at(162).banner("CARRIER GROUP AHEAD", "CLEAR THE SCREEN", 2400).pickup("bomb", C);
+  tl.at(162).banner("CARRIER GROUP AHEAD", "CLEAR THE SCREEN", 2400, { key: "wave.pacific.carrierAhead", subKey: "wave.pacific.carrierAhead.sub" }).pickup("bomb", C);
   tl.at(164).spawn("destroyer", L + 60).spawn("destroyer", R - 60, undefined, -120);
   tl.at(166).vee("fighter_basic", 7, C, { dx: 40 });
   tl.at(170).spawns("interceptor", [LC, RC]).pickup("power", C);
@@ -123,7 +127,8 @@ export function pacific(): ChapterScript {
         { id: "pac_nodeath", text: "Finish without losing a life", stat: "deaths", goal: 0, cmp: "lte", reward: 250 },
       ],
       reward: 500,
-      medalScores: medals([25500, 34500, 43000, 50500], 1.08),
+      // round 5: M1 starting guess gold / ace x1.25 for the THREAT score multiplier (re-derive from round-5 QA)
+      medalScores: medals([25500, 34500, 54000, 63000], 1.08),
     },
     features: tl.features,
   };

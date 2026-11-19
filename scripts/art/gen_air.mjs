@@ -7,13 +7,16 @@ import { Img, Mask, P, RAMP, shade, outline, damaged, mix } from "./lib.mjs";
  * y = 0 at the nose. They are mirrored automatically. Rendering handles bank (squash + per-side tone shift)
  * and nose direction (up for the player, down for enemies) while keeping light from the top-left.
  */
-export function buildPlane(spec, { bank = 0, down = false, frame = 0 } = {}) {
+export function buildPlane(spec, { bank = 0, down = false, frame = 0, parallax = 0 } = {}) {
   const { W, H } = spec;
   const img = new Img(W, H);
   const cx = W / 2;
   const sq = bank === 0 ? 1 : spec.bankSquash ?? 0.8;
   const shift = bank * (spec.bankShift ?? 0.6);
-  const T = (dx, y) => [cx + dx * sq + shift, down ? H - y : y];
+  // `parallax` (enemy bank frames only): raised parts (canopy domes, `z` parts) slide further toward the low wing,
+  // which reads as a roll instead of a plain sideways shift. Player sprites never pass it (unchanged art).
+  let zShift = 0;
+  const T = (dx, y) => [cx + dx * sq + shift + zShift, down ? H - y : y];
   const centre = cx + shift;
   const polyMask = (half, mirror = true) => {
     const m = new Mask(W, H);
@@ -41,6 +44,7 @@ export function buildPlane(spec, { bank = 0, down = false, frame = 0 } = {}) {
   };
   for (const part of spec.parts) {
     if (part.frames && !part.frames.includes(frame)) continue;
+    zShift = bank * parallax * (part.z ?? (part.style === "dome" ? 1 : 0));
     let m;
     if (part.half) m = polyMask(part.half, part.mirror !== false);
     else if (part.ell) {
@@ -66,6 +70,7 @@ export function buildPlane(spec, { bank = 0, down = false, frame = 0 } = {}) {
     shade(img, m, ramp, part.style ?? "bevel", { grad: part.grad });
     if (part.bankTone !== false) bankAdjust(m, ramp);
   }
+  zShift = 0;
   // details in transformed space
   const api = {
     img,
@@ -408,11 +413,54 @@ const MISSILE_CARRIER = {
   },
 };
 
-function helicopter(frame) {
-  // 32x32, nose down, 4-frame rotor
+/**
+ * Main rotor seen from above (2 blades, 6-frame loop = 180deg): faint translucent disc, a rim whose bright dashes
+ * travel with the blades, two solid blades with light tips and two fading smear copies behind each blade.
+ */
+function rotorDisc(img, hx, hy, R, frame, n = 6) {
+  const ang = (frame / n) * Math.PI;
+  for (let y = 0; y < img.h; y++)
+    for (let x = 0; x < img.w; x++) {
+      const dx = x + 0.5 - hx, dy = y + 0.5 - hy;
+      const d = Math.hypot(dx, dy);
+      if (d > R + 0.5) continue;
+      if (d > R - 0.6) {
+        const th = Math.atan2(dy, dx) - ang;
+        const bucket = (((Math.floor((th / Math.PI) * 6) % 6) + 6) % 6);
+        img.set(x, y, AL(P.G3, bucket % 3 === 0 ? 150 : 80));
+      } else if (d > 2 && img.a(x, y) === 0) img.set(x, y, AL(P.G3, 30));
+    }
+  for (const off of [0, Math.PI]) {
+    for (const [lag, alpha, col] of [[0.5, 55, P.G3], [0.26, 120, P.G2]]) {
+      const a = ang + off - lag;
+      for (let r = 3; r <= R - 0.5; r += 0.5) img.set(Math.floor(hx + Math.cos(a) * r), Math.floor(hy + Math.sin(a) * r), AL(col, alpha));
+    }
+    const a = ang + off;
+    for (let r = 1; r <= R; r += 0.5) img.set(Math.floor(hx + Math.cos(a) * r), Math.floor(hy + Math.sin(a) * r), r > R - 2.5 ? P.G4 : P.G0);
+  }
+  const ix = Math.floor(hx - 0.5), iy = Math.floor(hy - 0.5);
+  img.set(ix, iy, P.G4);
+  img.set(ix + 1, iy, P.G2);
+  img.set(ix, iy + 1, P.G2);
+  img.set(ix + 1, iy + 1, P.G1);
+}
+
+/** tail rotor (spins in a vertical plane): top-down it is a short blade along the boom whose length pulses */
+function tailRotor(a, dx, y, frame, half = 2.5) {
+  const [x0, y0] = a.T(dx, y);
+  const hx = Math.floor(x0), hy = Math.floor(y0);
+  for (let k = -Math.ceil(half); k <= Math.ceil(half); k++) if (!a.img.get(hx, hy + k)) a.img.set(hx, hy + k, AL(P.G3, 70));
+  const L = Math.round(Math.abs(Math.cos((frame * Math.PI) / 3)) * half);
+  for (let k = -L; k <= L; k++) a.img.set(hx, hy + k, Math.abs(k) === L && L > 0 ? P.G4 : P.G1);
+  a.img.set(hx, hy, P.G3);
+}
+
+function helicopter(frame, bank = 0) {
+  // 32x32, nose down, 6-frame rotor
   const spec = {
     W: 32,
     H: 32,
+    bankSquash: 0.86,
     parts: [
       { half: [[0.8, 14], [1.4, 14], [1.6, 30], [0, 31]], ramp: "olive" }, // tail boom
       { half: [[0, 29], [3.5, 28.5], [3.5, 30.5], [0, 30.5]], ramp: "olive" }, // tail stabilizer
@@ -429,36 +477,12 @@ function helicopter(frame) {
       a.px(2, 15, P.O0);
     },
     post(a) {
-      // tail rotor
-      const tf = a.frame % 3;
-      a.set(2, [29, 30, 31][tf], P.G4, false);
-      a.set(2.5, [31, 29, 30][tf], P.G3, false);
+      tailRotor(a, 2.6, 29.6, a.frame);
       if (a.frame < 3) a.set(0, 26, P.R3, false); // beacon
     },
   };
-  const img = buildPlane(spec, { down: true, frame });
-  // main rotor: hub at (16, 11)
-  const hx = 15.5, hy = 11.5, R = 15;
-  const ang = (frame * 30 * Math.PI) / 180;
-  // blur disc
-  for (let y = 0; y < 32; y++)
-    for (let x = 0; x < 32; x++) {
-      const d = Math.hypot(x + 0.5 - hx - 0.5, y + 0.5 - hy - 0.5);
-      if (d > R - 0.5 && d < R + 0.5) img.set(x, y, [...P.G3.slice(0, 3), 70]);
-    }
-  for (const off of [0, Math.PI]) {
-    for (let r = 1; r <= R; r += 0.5) {
-      const x = hx + 0.5 + Math.cos(ang + off) * r, y = hy + 0.5 + Math.sin(ang + off) * r;
-      img.set(Math.floor(x), Math.floor(y), r > R - 2 ? P.G4 : P.G1);
-      // trailing smear
-      const x2 = hx + 0.5 + Math.cos(ang + off - 0.25) * r, y2 = hy + 0.5 + Math.sin(ang + off - 0.25) * r;
-      if (r > 4) img.set(Math.floor(x2), Math.floor(y2), [...P.G2.slice(0, 3), 110]);
-    }
-  }
-  img.set(16, 12, P.G3);
-  img.set(15, 11, P.G4);
-  img.set(16, 11, P.G2);
-  img.set(15, 12, P.G2);
+  const img = buildPlane(spec, { down: true, frame, bank, parallax: 0.6 });
+  rotorDisc(img, 16 + bank * 0.6, 12, 15, frame);
   return img;
 }
 
@@ -501,11 +525,12 @@ function shieldDrone(frame) {
   return im;
 }
 
-function gunshipLight(frame) {
-  // 28x32 light attack helicopter (nose down), 4-frame rotor
+function gunshipLight(frame, bank = 0) {
+  // 28x32 light attack helicopter (nose down), 6-frame rotor
   const spec = {
     W: 28,
     H: 32,
+    bankSquash: 0.86,
     parts: [
       { half: [[0.7, 13], [1.2, 13], [1.3, 29], [0, 30]], ramp: "tan" },
       { half: [[0, 28], [3, 27.6], [3, 29.4], [0, 29.4]], ramp: "tan" },
@@ -519,24 +544,12 @@ function gunshipLight(frame) {
       a.px(0, 4, P.G1, false);
       a.px(2.6, 28.6, P.R2);
     },
+    post(a) {
+      tailRotor(a, 2.2, 28.6, a.frame, 2);
+    },
   };
-  const img = buildPlane(spec, { down: true, frame });
-  const hx = 13.5, hy = 10.5, R = 12.5;
-  const ang = (frame * 30 * Math.PI) / 180;
-  for (let y = 0; y < 32; y++)
-    for (let x = 0; x < 28; x++) {
-      const d = Math.hypot(x - hx, y - hy);
-      if (d > R - 0.5 && d < R + 0.5) img.set(x, y, [...P.G3.slice(0, 3), 70]);
-    }
-  for (const off of [0, Math.PI]) {
-    for (let r = 1; r <= R; r += 0.5) {
-      img.set(Math.floor(hx + 0.5 + Math.cos(ang + off) * r), Math.floor(hy + 0.5 + Math.sin(ang + off) * r), r > R - 2 ? P.G4 : P.G1);
-      const a2 = ang + off - 0.25;
-      if (r > 4) img.set(Math.floor(hx + 0.5 + Math.cos(a2) * r), Math.floor(hy + 0.5 + Math.sin(a2) * r), [...P.G2.slice(0, 3), 110]);
-    }
-  }
-  img.set(14, 11, P.G3);
-  img.set(13, 10, P.G4);
+  const img = buildPlane(spec, { down: true, frame, bank, parallax: 0.6 });
+  rotorDisc(img, 14 + bank * 0.6, 11, 12.5, frame);
   return img;
 }
 
@@ -562,4 +575,4 @@ export function genAirEnemies(reg) {
   reg.add("enemy_shield_drone", [0, 1, 2, 3].map(shieldDrone), { fps: 8, loop: true, group: "enemy_air" });
 }
 
-export { flame, mix, burner, prop };
+export { flame, mix, burner, prop, helicopter, gunshipLight };

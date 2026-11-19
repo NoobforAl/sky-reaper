@@ -7,6 +7,7 @@
  *  Parts change attacks: emitter gone -> core fires double cyan rings; cannons gone -> core bursts; shieldgens gone -> core open.
  */
 import { GAME_H, GAME_W, type WorldAPI } from "../contracts";
+import { tr } from "../levels/i18n";
 import { BP } from "./attacks";
 import { BossBase, roam, type PartRT } from "./framework";
 
@@ -20,7 +21,7 @@ export class CitadelCoreBoss extends BossBase {
   private altFlip = false;
 
   constructor(world: WorldAPI) {
-    super("citadel_core", world);
+    super("citadel_core", world, 1.8); // round 5 B1: 1 -> 1.8
     this.holdY = 230;
     this.entrySec = 4.5;
     this.addPart("emitter", "emitter", 0, 150);
@@ -59,8 +60,8 @@ export class CitadelCoreBoss extends BossBase {
   }
 
   protected onPartLost(p: PartRT): void {
-    if (p.kind === "shieldgen" && !this.alive("shieldgen")) this.world.events.emit("banner", { text: "SHIELD GENERATORS DOWN", ms: 1600 });
-    if (p.kind === "emitter") this.world.events.emit("banner", { text: "EMITTER DESTROYED", ms: 1400 });
+    if (p.kind === "shieldgen" && !this.alive("shieldgen")) this.world.events.emit("banner", { text: tr("bossBanner.shieldGensDown", "SHIELD GENERATORS DOWN"), ms: 1600 });
+    if (p.kind === "emitter") this.world.events.emit("banner", { text: tr("bossBanner.emitterDestroyed", "EMITTER DESTROYED"), ms: 1400 });
   }
 
   /** vertical beam columns at the player's x (+ offsets): ground markers first, then the strike */

@@ -6,6 +6,7 @@
  *  Parts change attacks: engines destroyed -> slower, no mines; drill destroyed -> no ram, core needles instead.
  */
 import { GAME_W, type WorldAPI } from "../contracts";
+import { tr } from "../levels/i18n";
 import { BP } from "./attacks";
 import { BossBase, roam, type PartRT } from "./framework";
 
@@ -15,7 +16,7 @@ export class IceDreadnoughtBoss extends BossBase {
   private ram = 0;
 
   constructor(world: WorldAPI) {
-    super("ice_dreadnought", world, 0.85);
+    super("ice_dreadnought", world, 2.2); // round 5 B1: 0.85 -> 2.2
     this.holdY = 200;
     this.entrySec = 4;
     this.addPart("hull", "hull", 0, 0);
@@ -48,7 +49,7 @@ export class IceDreadnoughtBoss extends BossBase {
   }
 
   private startRam(b: BossBase): void {
-    b.world.events.emit("banner", { text: "DRILL CHARGE", subtext: "MOVE ASIDE", ms: 1200 });
+    b.world.events.emit("banner", { text: tr("bossBanner.ice.drill", "DRILL CHARGE"), subtext: tr("bossBanner.ice.drill.sub", "MOVE ASIDE"), ms: 1200 });
     const d = b.part("drill");
     // the lane it will plough through
     if (d) for (let i = 0; i < 4; i++) b.blast(this.x, d.e.y + 70 + i * 70, 34, 1100 + i * 120, 20, [140, 220, 255]);
@@ -58,7 +59,7 @@ export class IceDreadnoughtBoss extends BossBase {
   }
 
   protected onPartLost(p: PartRT): void {
-    if (p.kind === "engine" && !this.alive("engine")) this.world.events.emit("banner", { text: "ENGINES DOWN", subtext: "IT'S SLOWING", ms: 1500 });
+    if (p.kind === "engine" && !this.alive("engine")) this.world.events.emit("banner", { text: tr("bossBanner.ice.engines", "ENGINES DOWN"), subtext: tr("bossBanner.ice.engines.sub", "IT'S SLOWING"), ms: 1500 });
     if (p.kind === "drill") this.ram = Math.min(this.ram, 0.6);
   }
 

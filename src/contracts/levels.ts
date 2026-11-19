@@ -92,6 +92,8 @@ export interface BossHudInfo {
   maxHp: number;
   phase: number;
   phases: number;
+  /** round 5: soft-timer escalation stage 0..3 (BALANCE_SPEC §5); HUD pulses the bar / shows ENRAGED */
+  escalation?: number;
 }
 
 export interface BossController {

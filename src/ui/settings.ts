@@ -7,30 +7,19 @@ import { reducedMotion, writePrefs } from "./prefs";
 import { BOTTOM_H, BOTTOM_Y, cols, M, WIDE } from "./layout";
 import { C, esc } from "./theme";
 import { button, selector, slider, toggle, type Widget } from "./widgets";
+import { t } from "../i18n";
+import { applyLocale, isFa, tr } from "./i18n";
 
 type Tab = "audio" | "game" | "devices" | "keys";
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: "audio", label: "AUDIO" },
-  { id: "game", label: "GAME" },
-  { id: "devices", label: "DEVICES" },
-  { id: "keys", label: "KEYS" },
-];
+const TAB_IDS: Tab[] = ["audio", "game", "devices", "keys"];
+const tabLabel = (id: Tab) => tr(`settings.tab.${id}`);
 
-const ACTION_LABELS: Array<[Action, string]> = [
-  ["up", "MOVE UP"],
-  ["down", "MOVE DOWN"],
-  ["left", "MOVE LEFT"],
-  ["right", "MOVE RIGHT"],
-  ["fire", "FIRE (AIR)"],
-  ["bomb", "BOMB (GROUND)"],
-  ["special", "FLARE"],
-  ["weaponPrev", "PREV WEAPON"],
-  ["weaponNext", "NEXT WEAPON"],
-  ["groundNext", "NEXT ORDNANCE"],
-  ["pause", "PAUSE"],
-];
+const ACTIONS: Action[] = ["up", "down", "left", "right", "fire", "bomb", "special", "weaponPrev", "weaponNext", "groundNext", "pause"];
+const actionLabel = (a: Action) => tr(`settings.action.${a}`);
 
 let lastTab: Tab = "audio";
+/** widget to focus after the scene reloads itself (language switch) */
+let reloadFocus: string | undefined;
 
 /** push current settings into the audio service (in case it does not subscribe itself) */
 export function applyAudio(svc: Services): void {
@@ -51,8 +40,8 @@ export function registerSettings(svc: Services): void {
     const save = svc.save;
     const st = () => save.data.settings;
     // wide: options (tabs) left, the full key-binding table always visible right
-    const tabs = WIDE ? TABS.filter((t) => t.id !== "keys") : TABS;
-    let tab: Tab = tabs.some((t) => t.id === lastTab) ? lastTab : tabs[0]!.id;
+    const tabs = (WIDE ? TAB_IDS.filter((id) => id !== "keys") : TAB_IDS).map((id) => ({ id, label: tabLabel(id) }));
+    let tab: Tab = tabs.some((q) => q.id === lastTab) ? lastTab : tabs[0]!.id;
     let rebinding: Action | null = null;
     let confirmReset = false;
     let sfxCooldown = 0;
@@ -75,22 +64,23 @@ export function registerSettings(svc: Services): void {
         const { g } = kk;
         sfxCooldown = Math.max(0, sfxCooldown - k.dt());
         if (WIDE) {
-          g.text("SETTINGS", M, 18 + kk.insets.top + 30, { size: 32, color: C.amber, anchor: "left", outline: 2 });
-          g.text("Changes apply instantly and are saved.", M + 250, 18 + kk.insets.top + 32, { size: 11, color: C.text, anchor: "left", outline: 1 });
-        } else g.text("SETTINGS", 24, 18 + kk.insets.top + 22, { size: 28, color: C.amber, anchor: "left", outline: 2 });
+          const tw = g.measure(tr("settings.title"), 32, true);
+          g.text(tr("settings.title"), M, 18 + kk.insets.top + 30, { size: 32, color: C.amber, anchor: "left", outline: 2 });
+          g.text(tr("settings.subtitle"), M + Math.max(250, tw + 36), 18 + kk.insets.top + 32, { size: 11, color: C.text, anchor: "left", outline: 1 });
+        } else g.text(tr("settings.title"), 24, 18 + kk.insets.top + 22, { size: 28, color: C.amber, anchor: "left", outline: 2 });
         if (tab === "devices") {
           const inp = svc.input;
           const pad = inp.gamepad;
           const py = WIDE ? gamepadY : 420;
-          g.panel(LX, py, LW, 150, { title: "GAMEPAD", accent: C.cyan });
-          g.text(pad ? esc(pad.slice(0, 44)) : "No gamepad detected - press any button", LX + 16, py + 26, { size: 11, color: pad ? C.green : C.grey, width: LW - 32 });
-          const lines = ["STICK / D-PAD  move", "A / RT  fire      B / X  bomb", "Y / RB  flare     LB  next weapon", "LT / SELECT  next ordnance   START  pause"];
-          lines.forEach((l, i) => g.text(l, LX + 16, py + 54 + i * 20, { size: 11, color: C.text }));
-          g.text(`TOUCH DETECTED: ${inp.touchActive ? "YES" : "NO"}`, LX + 16, py + 170, { size: 11, color: C.text, outline: 1 });
+          g.panel(LX, py, LW, 150, { title: tr("settings.gamepad"), accent: C.cyan });
+          g.text(pad ? esc(pad.slice(0, 44)) : tr("settings.noGamepad"), LX + 16, py + 26, { size: 11, color: pad ? C.green : C.grey, width: LW - 32, maxLines: 1 });
+          const lines = [tr("settings.pad.line1"), tr("settings.pad.line2"), tr("settings.pad.line3"), tr("settings.pad.line4")];
+          lines.forEach((l, i) => g.text(l, LX + 16, py + 50 + i * 24, { size: 11, color: C.text, width: LW - 32, maxLines: 1 }));
+          g.text(tr("settings.touchDetected", { value: inp.touchActive ? tr("common.yes") : tr("common.no") }), LX + 16, py + 170, { size: 11, color: C.text, outline: 1 });
         }
         if (WIDE) {
-          g.panel(RX - 12, 104, RW + 24, BOTTOM_Y - 22 - 104, { title: "KEY BINDINGS", accent: C.amber });
-          g.text("Click an action, then press a new key (Esc cancels). Amber = primary.", RX + RW / 2, KEY_Y0 - 16, {
+          g.panel(RX - 12, 104, RW + 24, BOTTOM_Y - 22 - 104, { title: tr("settings.keyBindings"), accent: C.amber });
+          g.text(tr("settings.keyHelpWide"), RX + RW / 2, KEY_Y0 - 16, {
             size: 10,
             color: C.text,
             anchor: "center",
@@ -99,7 +89,7 @@ export function registerSettings(svc: Services): void {
             maxLines: 1,
           });
         } else if (tab === "keys") {
-          g.text("Select an action, then press a key. Esc cancels.", GAME_W / 2, 146, { size: 10, color: C.text, anchor: "center", align: "center", width: GAME_W - 40, maxLines: 2 });
+          g.text(tr("settings.keyHelp"), GAME_W / 2, isFa() ? 142 : 146, { size: 10, color: C.text, anchor: "center", align: "center", width: GAME_W - 40, maxLines: isFa() ? 1 : 2 });
         }
       },
       drawOver: (kk) => {
@@ -108,18 +98,18 @@ export function registerSettings(svc: Services): void {
         const mx = (GAME_W - mw) / 2;
         if (rebinding) {
           g.rect(0, 0, GAME_W, GAME_H, C.dark, 0.7);
-          g.panel(mx, 330, mw, 150, { title: "REBIND", accent: C.amber });
-          const lbl = ACTION_LABELS.find((a) => a[0] === rebinding)?.[1] ?? rebinding;
+          g.panel(mx, 330, mw, 150, { title: tr("settings.rebind"), accent: C.amber });
+          const lbl = actionLabel(rebinding);
           g.text(lbl, GAME_W / 2, 380, { size: 20, color: C.white, anchor: "center" });
           const blink = Math.sin(k.time() * 8) > 0;
-          g.text("PRESS A KEY", GAME_W / 2, 418, { size: 16, color: blink ? C.amber : C.amberDim, anchor: "center" });
-          g.text("ESC TO CANCEL", GAME_W / 2, 452, { size: 11, color: C.grey, anchor: "center" });
+          g.text(tr("settings.pressKey"), GAME_W / 2, 418, { size: 16, color: blink ? C.amber : C.amberDim, anchor: "center" });
+          g.text(tr("settings.escCancel"), GAME_W / 2, 452, { size: 11, color: C.grey, anchor: "center" });
         }
         if (confirmReset) {
           g.rect(0, 0, GAME_W, GAME_H, C.dark, 0.7);
-          g.panel(mx - 10, 300, mw + 20, 220, { title: "WARNING", accent: C.red });
-          g.text("ERASE ALL PROGRESS?", GAME_W / 2, 350, { size: 20, color: C.red, anchor: "center" });
-          g.text("Credits, upgrades, unlocks, records\nand settings will be lost.", GAME_W / 2, 392, {
+          g.panel(mx - 10, 300, mw + 20, 220, { title: tr("settings.warning"), accent: C.red });
+          g.text(tr("settings.eraseTitle"), GAME_W / 2, 350, { size: 20, color: C.red, anchor: "center" });
+          g.text(tr("settings.eraseBody"), GAME_W / 2, 392, {
             size: 12,
             color: C.text,
             anchor: "center",
@@ -161,7 +151,7 @@ export function registerSettings(svc: Services): void {
         root.sfx("ui_back");
         build("key_" + a);
       };
-      root.set([button({ id: "cancel", x: GAME_W / 2 - 100, y: 496, w: 200, h: 50, label: "CANCEL", accent: C.cyan, sfx: false, onClick: cancel })], "cancel");
+      root.set([button({ id: "cancel", x: GAME_W / 2 - 100, y: 496, w: 200, h: 50, label: tr("common.cancel"), accent: C.cyan, sfx: false, onClick: cancel })], "cancel");
       root.capture = (name) => {
         if (name === "escape") {
           root.sfx("ui_back");
@@ -199,7 +189,7 @@ export function registerSettings(svc: Services): void {
             y: 440,
             w: 170,
             h: 54,
-            label: "CANCEL",
+            label: tr("common.cancel"),
             accent: C.cyan,
             sfx: false,
             onClick: () => root.goBack(),
@@ -210,13 +200,21 @@ export function registerSettings(svc: Services): void {
             y: 440,
             w: 170,
             h: 54,
-            label: "ERASE",
+            label: tr("settings.erase"),
             accent: C.red,
             onClick: () => {
               save.reset();
               if (isSkyInput(svc.input)) svc.input.resetBindings();
               applyAudio(svc);
               confirmReset = false;
+              // a reset save is back to the default language: reload the scene if that changed the locale
+              const lang = save.data.settings.language ?? "en";
+              void applyLocale(lang).then(() => {
+                if (kit.root.g.mirrored !== (lang === "fa")) {
+                  reloadFocus = "reset";
+                  k.go(SCENES.settings);
+                }
+              });
               build("reset");
             },
           }),
@@ -272,16 +270,16 @@ export function registerSettings(svc: Services): void {
               },
             }),
           );
-        vol("master", "MASTER VOLUME", "masterVolume");
-        vol("music", "MUSIC", "musicVolume");
-        vol("sfx", "SOUND EFFECTS", "sfxVolume");
+        vol("master", tr("settings.masterVolume"), "masterVolume");
+        vol("music", tr("settings.music"), "musicVolume");
+        vol("sfx", tr("settings.sfx"), "sfxVolume");
         ws.push(
           toggle({
             id: "mute",
             x: X,
             y: next(50),
             w: W,
-            label: "MUTE ALL",
+            label: tr("settings.muteAll"),
             get: () => st().muted,
             set: (v) => {
               st().muted = v;
@@ -290,17 +288,39 @@ export function registerSettings(svc: Services): void {
           }),
         );
       } else if (tab === "game") {
+        // round 5: UI language (endonyms, never translated). Switching reloads the scene so the RTL layout applies.
+        ws.push(
+          selector<"en" | "fa">({
+            id: "language",
+            x: X,
+            y: next(50),
+            w: W,
+            label: tr("settings.language"),
+            options: [
+              { value: "en", label: t("settings.language.en", undefined, "en") },
+              { value: "fa", label: "فارسی" },
+            ],
+            get: () => (st().language === "fa" ? "fa" : "en"),
+            set: (v) => {
+              if ((st().language ?? "en") === v) return;
+              st().language = v;
+              changed();
+              reloadFocus = "language";
+              void applyLocale(v).then(() => k.go(SCENES.settings));
+            },
+          }),
+        );
         ws.push(
           selector({
             id: "difficulty",
             x: X,
             y: next(50),
             w: W,
-            label: "DIFFICULTY",
+            label: tr("settings.difficulty"),
             options: [
-              { value: 0.7, label: "EASY" },
-              { value: 1, label: "NORMAL" },
-              { value: 1.5, label: "HARD" },
+              { value: 0.7, label: tr("settings.easy") },
+              { value: 1, label: tr("settings.normal") },
+              { value: 1.5, label: tr("settings.hard") },
             ],
             get: () => (st().difficulty < 0.85 ? 0.7 : st().difficulty > 1.25 ? 1.5 : 1),
             set: (v) => {
@@ -325,16 +345,31 @@ export function registerSettings(svc: Services): void {
               },
             }),
           );
-        tog("autofire", "AUTO-FIRE", "autoFire");
-        tog("shake", "SCREEN SHAKE", "screenShake");
-        tog("fps", "SHOW FPS", "showFps");
+        tog("autofire", tr("settings.autoFire"), "autoFire");
+        tog("shake", tr("settings.screenShake"), "screenShake");
+        tog("fps", tr("settings.showFps"), "showFps");
+        // round 5: floating "+150" kill popups (engine reads settings.scorePopups; undefined = on)
+        ws.push(
+          toggle({
+            id: "popups",
+            x: X,
+            y: next(50),
+            w: W,
+            label: tr("settings.scorePopups"),
+            get: () => st().scorePopups !== false,
+            set: (v) => {
+              st().scorePopups = v;
+              changed();
+            },
+          }),
+        );
         ws.push(
           toggle({
             id: "reducedmotion",
             x: X,
             y: next(50),
             w: W,
-            label: "REDUCED MOTION",
+            label: tr("settings.reducedMotion"),
             get: () => reducedMotion(),
             set: (v) => {
               writePrefs({ reducedMotion: v });
@@ -350,7 +385,7 @@ export function registerSettings(svc: Services): void {
             y: next(54),
             w: W,
             h: 54,
-            label: "RESET SAVE DATA",
+            label: tr("settings.resetSave"),
             accent: C.red,
             onClick: () => {
               confirmReset = true;
@@ -365,11 +400,11 @@ export function registerSettings(svc: Services): void {
             x: X,
             y: next(50),
             w: W,
-            label: "TOUCH CONTROLS",
+            label: tr("settings.touchControls"),
             options: [
-              { value: "auto", label: "AUTO" },
-              { value: "on", label: "ON" },
-              { value: "off", label: "OFF" },
+              { value: "auto", label: tr("common.auto") },
+              { value: "on", label: tr("common.on") },
+              { value: "off", label: tr("common.off") },
             ],
             get: () => st().touchControls,
             set: (v) => {
@@ -386,10 +421,10 @@ export function registerSettings(svc: Services): void {
               x: X,
               y: next(50),
               w: W,
-              label: "TOUCH STEERING",
+              label: tr("settings.touchSteering"),
               options: [
-                { value: "drag", label: "DRAG" },
-                { value: "stick", label: "JOYSTICK" },
+                { value: "drag", label: tr("settings.drag") },
+                { value: "stick", label: tr("settings.joystick") },
               ],
               get: () => inp.touchMoveMode,
               set: (v) => {
@@ -404,7 +439,7 @@ export function registerSettings(svc: Services): void {
             x: X,
             y: next(50),
             w: W,
-            label: "AUTO-FIRE",
+            label: tr("settings.autoFire"),
             get: () => st().autoFire,
             set: (v) => {
               st().autoFire = v;
@@ -419,7 +454,8 @@ export function registerSettings(svc: Services): void {
         const rowH = WIDE ? 42 : 44;
         const KX = WIDE ? RX : X;
         const KW = WIDE ? RW : W;
-        ACTION_LABELS.forEach(([a, lbl], i) => {
+        ACTIONS.forEach((a, i) => {
+          const lbl = actionLabel(a);
           const w: Widget = {
             id: "key_" + a,
             x: KX,
@@ -444,7 +480,7 @@ export function registerSettings(svc: Services): void {
               }
             },
             activate: () => startRebind(a),
-            tooltip: () => [lbl, `KEYS: ${(st().bindings[a] ?? []).map(keyLabel).join(" / ") || "-"}`, kit.mode() === "kb" ? "CLICK OR ENTER, THEN PRESS THE NEW KEY" : "SELECT, THEN PRESS THE NEW KEY"],
+            tooltip: () => [lbl, tr("settings.keysList", { keys: (st().bindings[a] ?? []).map(keyLabel).join(" / ") || "-" }), kit.mode() === "kb" ? tr("settings.rebindHintWide") : tr("settings.rebindHint")],
           };
           ws.push(w);
         });
@@ -452,10 +488,10 @@ export function registerSettings(svc: Services): void {
           button({
             id: "resetkeys",
             x: KX,
-            y: KEY_Y0 + ACTION_LABELS.length * (rowH + 6) + 4,
+            y: KEY_Y0 + ACTIONS.length * (rowH + 6) + 4,
             w: KW,
             h: 44,
-            label: "RESET KEYS TO DEFAULT",
+            label: tr("settings.resetKeys"),
             size: 14,
             accent: C.red,
             onClick: () => {
@@ -472,7 +508,7 @@ export function registerSettings(svc: Services): void {
           y: BOTTOM_Y,
           w: WIDE ? Math.min(LW, 280) : GAME_W - 40,
           h: BOTTOM_H,
-          label: "BACK",
+          label: tr("common.back"),
           accent: C.cyan,
           sfx: false,
           onClick: () => root.goBack(),
@@ -481,6 +517,9 @@ export function registerSettings(svc: Services): void {
       );
       root.set(ws, focus);
     };
-    build();
+    const f0 = reloadFocus;
+    reloadFocus = undefined;
+    build(f0);
+    if (f0) root.showFocus = true;
   });
 }

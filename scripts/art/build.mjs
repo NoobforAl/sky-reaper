@@ -8,6 +8,7 @@ import { encodePNG } from "./png.mjs";
 import { Img, Registry, strip, upscale, P } from "./lib.mjs";
 import { genPlayers, genAirEnemies } from "./gen_air.mjs";
 import { genGroundEnemies } from "./gen_ground.mjs";
+import { genEnemyAnims } from "./gen_anim.mjs";
 import { genBosses } from "./gen_boss.mjs";
 import { genBullets, genFx, genPickups } from "./gen_fx.mjs";
 import { genWorld } from "./gen_world.mjs";
@@ -40,6 +41,7 @@ function main() {
   genSkins(reg);
   genAirEnemies(reg);
   genGroundEnemies(reg);
+  genEnemyAnims(reg); // bank / damaged / recoil / burning-wreck / debris / muzzle (docs/ANIM_SPEC.md)
   genBosses(reg);
   genBullets(reg);
   genFx(reg);
@@ -132,6 +134,7 @@ function manifestDoc(reg, manifest) {
   L.push("- `*_gun` overlays (turrets, tanks, boss turrets) point **down** at angle 0, pivot = sprite centre, matching the renderer's `angleToPlayer - 90`.");
   L.push("- Bullets point **up** at angle 0 (renderer uses `angle + 90`). `bullet_player_laser` / `ebullet_laser` tile vertically.");
   L.push("- FX frames are chosen by progress (0..1 over life), so fps there is only a hint.");
+  L.push("- Enemy animation extras (scripts/art/gen_anim.mjs; selection rules in docs/ANIM_SPEC.md): `enemy_<id>_bankl|_bankr` (air, same frames as base), `enemy_<id>_dmg` (all, < 50 % HP) and `_bankl_dmg|_bankr_dmg`, `enemy_<id>_gun` = 3-frame state strip [rest, fire+recoil, return], `enemy_<id>_burn` 3-frame burning wreck, `debris_s|m|l` (4 variants, fps 0), `fx_muzzle_e|_l` (enemy muzzle flash, points down, muzzle = top-centre).");
   L.push("- Ground units have a burnt `enemy_<id>_dead` wreck. Tiles are seamless 64x64 (_a/_b share a 6px edge ring). Animated water/grating tiles are calm 4-frame loops: static body, only a few soft crests/glints fade in, drift 1px/frame and fade out (about 1% of pixels change per frame; nothing flickers tile-wide). The citadel trace pulse steps 16px/frame in muted colours.");
   L.push("- Fonts (KAPLAY bitmap fonts, loaded from the manifest `fonts` array by src/assets/loader.ts; the old `font` block is kept for compatibility):");
   L.push("  - `sr_font` = `assets/sr_font.png`: original pixel font (scripts/art/gen_font.mjs), design cell 7x11 (5px glyphs, cap height 8, x-height 6, 2px descenders, true lowercase), white glyph + 1px dark outline. Tint with `color`.");

@@ -34,10 +34,10 @@ export const PLAYER_TUNING = {
   marginX: 18,
   marginTop: 70,
   marginBottom: 34,
-  /** i-frames after a hit that reached the hull (QA #1: was 1.2, too forgiving with regen) */
-  hitIframes: 0.9,
-  /** i-frames after a hit fully absorbed by the shield (was 0.7) */
-  shieldOnlyIframes: 0.5,
+  /** i-frames after a hit that reached the hull (QA #1: 1.2 -> 0.9; BALANCE_SPEC P1: 0.7) */
+  hitIframes: 0.7,
+  /** i-frames after a hit fully absorbed by the shield (0.7 -> 0.5; BALANCE_SPEC P1: 0.35) */
+  shieldOnlyIframes: 0.35,
   flareIframes: 0.4,
   flareRadius: 120,
   respawnDelay: 1.5,
@@ -52,7 +52,8 @@ export const PLAYER_TUNING = {
   pickupRapid: 10,
   pickupOverdrive: 10,
   pickupMagnet: 12,
-  repairFrac: 0.35,
+  /** BALANCE_SPEC P3 (was 0.35) */
+  repairFrac: 0.3,
   /** horizontal speed/accel multiplier on wide (desktop) playfields: clamp(sqrt(X_SCALE), 1, hSpeedMax) */
   hSpeedMax: 1.6,
 } as const;

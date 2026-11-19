@@ -7,6 +7,7 @@
  *  loses stability: wobbles and fires rotating crosses while spinning.
  */
 import { GAME_W, X_SCALE, type WorldAPI } from "../contracts";
+import { tr } from "../levels/i18n";
 import { BP } from "./attacks";
 import { BossBase, roam, type PartRT } from "./framework";
 
@@ -18,7 +19,7 @@ export class HeliGunshipBoss extends BossBase {
   private tailLost = false;
 
   constructor(world: WorldAPI) {
-    super("heli_gunship", world);
+    super("heli_gunship", world, 1.7); // round 5 B1 1.85, minus the A5 knob step (-0.15): budget pass ran 67 s
     this.holdY = 190;
     this.entrySec = 3;
     this.addPart("body", "body", 0, 0, true);
@@ -51,14 +52,14 @@ export class HeliGunshipBoss extends BossBase {
   }
 
   private callDrones(b: BossBase): void {
-    b.world.events.emit("banner", { text: "DRONES INBOUND", ms: 1200 });
+    b.world.events.emit("banner", { text: tr("bossBanner.heli.drones", "DRONES INBOUND"), ms: 1200 });
     b.summon("drone_kamikaze", 60, -20);
     b.summon("drone_kamikaze", GAME_W - 60, -20);
   }
 
   private startDash(b: BossBase): void {
     this.dashDir = this.x < GAME_W / 2 ? 1 : -1;
-    b.world.events.emit("banner", { text: "STRAFING RUN", ms: 1000 });
+    b.world.events.emit("banner", { text: tr("bossBanner.heli.strafing", "STRAFING RUN"), ms: 1000 });
     b.telegraph("body", 1000, () => {
       this.dash = 1.6;
       b.fire(BP.ring12, "body");
@@ -68,7 +69,7 @@ export class HeliGunshipBoss extends BossBase {
   protected onPartLost(p: PartRT): void {
     if (p.kind === "tail") {
       this.tailLost = true;
-      this.world.events.emit("banner", { text: "TAIL ROTOR DOWN", subtext: "IT'S SPINNING OUT", ms: 1600 });
+      this.world.events.emit("banner", { text: tr("bossBanner.heli.tailRotor", "TAIL ROTOR DOWN"), subtext: tr("bossBanner.heli.tailRotor.sub", "IT'S SPINNING OUT"), ms: 1600 });
     }
   }
 

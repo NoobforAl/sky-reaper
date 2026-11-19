@@ -76,3 +76,20 @@ Dev test tip: with Vite HMR other agents' edits reload the page; QA runs against
 - **Banking art (optional, new key convention):** `enemy_<id>_bankl` / `enemy_<id>_bankr` (also `boss_<id>_<part>_bankl|r`), same frame layout as the
   base strip. Used while the unit slides sideways (smoothed lateral speed > ~63 u/s, i.e. `EnemyRT.bank` beyond +-0.45). Missing keys fall back to the base strip.
 - **Pause overlay:** keyboard, mouse/touch and gamepad (input service `menuPad()`: D-pad/stick up-down, A select, B/Start resume; 0.15 s debounce after opening).
+
+## Round 5: bomber perf, score popups, THREAT, balance (engine agent)
+- **Circles:** `Renderer.circ()` / `ring()` no longer call `k.drawCircle`. Both draw ONE `k.drawPolygon` from cached unit-circle points
+  (10 / 16 / 24 / 32 segments by radius). Rings are an annulus with cached indices: no KAPLAY line joins, which cost ~0.55 ms and ~10k objects
+  per ring (docs/PERF_BOMBERS.md). Hazards draw in two passes (all shapes, then all `fx_warning` sprites). `WORLD_TUNING.maxEnemyHazards` (36) is a
+  safety cap on live enemy hazards. Perf test: `tests/e2e/perf.spec.ts` (desert@121 wide, floor 50 FPS on GPU).
+- **Score popups:** `World.popups` (24 pooled slots, oldest recycled; kills within 40u in the same 0.1 s merge). Value = the combo- and
+  THREAT-boosted kill score; tint by combo; boss parts and the boss bonus are bigger and gold. Drawn after pickups and before bullets,
+  dimmed to 30 % within 70u of the player. Text is formatted (`k.formatText`) only on spawn / merge; per frame only position + opacity change.
+  Honours `settings.scorePopups !== false` (spawn and draw). Font `sr_font_outline`, else `sr_font` with a drawn drop shadow.
+- **THREAT (BALANCE_SPEC section 7):** `WORLD_TUNING.threat`; `world.threat` getter, `stats.threat / threatMeter / threatMax`, `HudData.threat /
+  threatProgress`. Meter +2/s while alive, +1 per kill at combo >= 1.5; a landed hit empties the meter, death resets rank and meter.
+  Kill score x(1 + 0.25 x rank). Bullet speed and fire rate per rank are applied by src/patterns (tieredPattern) and src/bosses, NOT in
+  `spawnBullet` (one place, so runner caps still clamp it).
+- **Balance applied here:** U1/U2 (prices, `SHOP_COST_EXP` 1.25), R2 replay 0.35, P1 i-frames 0.7 / 0.35, P2 shield regen 3 / delay 5, P3 repair 0.30,
+  D1 chapterDmg [0.9, 1.2, 1.3, 1.4, 1.5], P4 `powerDropMul` / `sustainDropMul`, P7 flares clear bullets only within 60u during boss fights.
+- `World.spawnEnemy`: `opts.data.wideCopy === true` is not counted in `spawned` / `killRate` (QA R4-5).

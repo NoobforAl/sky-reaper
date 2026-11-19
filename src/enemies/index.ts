@@ -15,9 +15,20 @@ import {
   type PatternOwner,
   type WorldAPI,
 } from "../contracts";
-import { chapterIndexOf, CHAPTER_TIERS, patternRunner, resolvePattern, tieredPattern } from "../patterns";
+import {
+  CHAPTER_HP,
+  chapterIndexOf,
+  CHAPTER_TIERS,
+  LEGACY_CHAPTER_HP,
+  patternRunner,
+  resolvePattern,
+  threatFireRate,
+  threatOf,
+  tieredPattern,
+} from "../patterns";
 import { ENEMY_DEFS, ENEMY_META } from "./defs";
-import { stepMovement } from "./movement";
+import { moveState, stepMovement } from "./movement";
+import { withOffsetBegin, withOffsetEnd } from "./separation";
 
 export { ENEMY_DEFS } from "./defs";
 
@@ -169,7 +180,8 @@ const isHazardPattern = (k: string) => k === "areaStrike" || k === "delayedBlast
 
 function tickAttacks(e: Enemy, st: AIState, dt: number, world: WorldAPI) {
   const p = world.player;
-  let rate = difficultyFireRate(difficulty(world)) * CHAPTER_TIERS[st.tier]!.fireRate;
+  const threat = threatOf(world);
+  let rate = difficultyFireRate(difficulty(world)) * CHAPTER_TIERS[st.tier]!.fireRate * threatFireRate(threat);
   if (st.buffUntil > world.time) rate *= RADAR_RATE;
   const playerAlive = !!p && p.alive !== false;
 
@@ -189,7 +201,7 @@ function tickAttacks(e: Enemy, st: AIState, dt: number, world: WorldAPI) {
       continue;
     }
     a.timer = a.def.interval;
-    const pat = tieredPattern(resolvePattern(a.def.pattern), st.tier);
+    const pat = tieredPattern(resolvePattern(a.def.pattern), st.tier, threat);
     st.running.push(patternRunner.start(pat, st.owner, world));
     if (isHazardPattern(pat.kind)) {
       // do not stack aimed fire on top of a fresh ground-hazard telegraph (bomber carpet + fan, walker mortar + burst)
@@ -202,6 +214,22 @@ function tickAttacks(e: Enemy, st: AIState, dt: number, world: WorldAPI) {
     inst.update(dt);
     if (inst.done) st.running.splice(i, 1);
   }
+}
+
+/**
+ * BALANCE_SPEC E1: chapter HP scale for regular enemies. The level timelines set it via `tl.setDefaults({ hpScale })`.
+ * While a chapter still uses its pre-round-5 default (LEGACY_CHAPTER_HP), top the unit up to the round-5 target; once
+ * the level file carries the new value (or a spawn sets its own hpScale) this is a no-op, so it never double-applies.
+ * Bosses / boss parts are excluded (src/bosses owns their HP).
+ */
+function applyChapterHp(e: Enemy, tier: number) {
+  if (e.bossId || e.def.destructible === false) return;
+  const target = CHAPTER_HP[tier] ?? 1;
+  const legacy = LEGACY_CHAPTER_HP[tier] ?? 1;
+  if (target === legacy) return;
+  const s = e.opts?.hpScale ?? 1;
+  if (Math.abs(s - legacy) > 1e-6 || e.hp !== e.maxHp) return;
+  e.maxHp = e.hp = Math.max(1, e.maxHp * (target / legacy));
 }
 
 // ------------------------------------------------------------------------------------------ system
@@ -227,6 +255,7 @@ export const enemySystem: EnemySystem = {
       tier: chapterIndexOf(world),
     };
     e.data.ai = st;
+    applyChapterHp(e, st.tier);
   },
 
   update(e: Enemy, dt: number, world: WorldAPI) {
@@ -235,7 +264,12 @@ export const enemySystem: EnemySystem = {
       enemySystem.onSpawn(e, world);
       st = ai(e)!;
     }
+    const mv = moveState(e);
+    const preX = e.x;
+    const preY = e.y;
+    withOffsetBegin(e, mv, world);
     stepMovement(e, e.def.movement, dt, world);
+    withOffsetEnd(e, mv, world, dt, preX, preY);
     if (onScreen(e)) st.vis += dt;
 
     switch (e.def.id) {

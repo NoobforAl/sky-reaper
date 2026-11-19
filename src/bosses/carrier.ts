@@ -13,7 +13,7 @@ export class CarrierBoss extends BossBase {
   readonly displayName = "CARRIER LEVIATHAN";
 
   constructor(world: WorldAPI) {
-    super("carrier", world, 0.85);
+    super("carrier", world, 1.6); // round 5 B1: 0.85 -> 1.6
     this.holdY = 250;
     this.entrySec = 4;
     this.y = -320;

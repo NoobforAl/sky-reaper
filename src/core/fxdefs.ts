@@ -33,5 +33,7 @@ export const FXDEF: Record<FxInternalKind, FxDef> = {
   blast_ground: { sprite: "fx_blast_ground", life: 0.55, size: 90, r: 70, g: 45, b: 30, gravity: 0, spread: 0, scroll: true, vy: 0 },
   debris: { sprite: "", life: 0.7, size: 4, r: 90, g: 70, b: 50, gravity: 380, spread: 130, scroll: false, vy: 0 },
   ping: { sprite: "fx_hit", life: 0.2, size: 12, r: 170, g: 180, b: 195, gravity: 0, spread: 0, scroll: false, vy: 0 },
+  /** dying aircraft tumbling away (sprite = the body key, set at spawn; ANIM_SPEC §4) */
+  spinout: { sprite: "", life: 0.55, size: 24, r: 255, g: 255, b: 255, gravity: 0, spread: 0, scroll: false, vy: 0 },
   wreck: { sprite: "", life: 8, size: 24, r: 40, g: 40, b: 40, gravity: 0, spread: 0, scroll: true, vy: 0 },
 };

@@ -532,7 +532,9 @@
    "src": "assets/sprites/enemy_tank_light_gun.png",
    "frameW": 16,
    "frameH": 16,
-   "frames": 1
+   "frames": 3,
+   "fps": 0,
+   "loop": false
   },
   {
    "key": "enemy_tank_light_dead",
@@ -555,7 +557,9 @@
    "src": "assets/sprites/enemy_tank_heavy_gun.png",
    "frameW": 24,
    "frameH": 24,
-   "frames": 1
+   "frames": 3,
+   "fps": 0,
+   "loop": false
   },
   {
    "key": "enemy_tank_heavy_dead",
@@ -615,7 +619,9 @@
    "src": "assets/sprites/enemy_ice_walker_gun.png",
    "frameW": 24,
    "frameH": 24,
-   "frames": 1
+   "frames": 3,
+   "fps": 0,
+   "loop": false
   },
   {
    "key": "enemy_aa_turret",
@@ -636,7 +642,9 @@
    "src": "assets/sprites/enemy_aa_turret_gun.png",
    "frameW": 16,
    "frameH": 16,
-   "frames": 1
+   "frames": 3,
+   "fps": 0,
+   "loop": false
   },
   {
    "key": "enemy_missile_launcher",
@@ -783,7 +791,9 @@
    "src": "assets/sprites/enemy_ice_turret_gun.png",
    "frameW": 16,
    "frameH": 16,
-   "frames": 1
+   "frames": 3,
+   "fps": 0,
+   "loop": false
   },
   {
    "key": "enemy_citadel_turret",
@@ -804,7 +814,746 @@
    "src": "assets/sprites/enemy_citadel_turret_gun.png",
    "frameW": 20,
    "frameH": 20,
+   "frames": 3,
+   "fps": 0,
+   "loop": false
+  },
+  {
+   "key": "enemy_mine_layer_bankl",
+   "src": "assets/sprites/enemy_mine_layer_bankl.png",
+   "frameW": 28,
+   "frameH": 28,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_mine_layer_bankr",
+   "src": "assets/sprites/enemy_mine_layer_bankr.png",
+   "frameW": 28,
+   "frameH": 28,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_fighter_basic_bankl",
+   "src": "assets/sprites/enemy_fighter_basic_bankl.png",
+   "frameW": 20,
+   "frameH": 20,
+   "frames": 4,
+   "fps": 14,
+   "loop": true
+  },
+  {
+   "key": "enemy_fighter_basic_bankr",
+   "src": "assets/sprites/enemy_fighter_basic_bankr.png",
+   "frameW": 20,
+   "frameH": 20,
+   "frames": 4,
+   "fps": 14,
+   "loop": true
+  },
+  {
+   "key": "enemy_interceptor_bankl",
+   "src": "assets/sprites/enemy_interceptor_bankl.png",
+   "frameW": 16,
+   "frameH": 24,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_interceptor_bankr",
+   "src": "assets/sprites/enemy_interceptor_bankr.png",
+   "frameW": 16,
+   "frameH": 24,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_fighter_heavy_bankl",
+   "src": "assets/sprites/enemy_fighter_heavy_bankl.png",
+   "frameW": 32,
+   "frameH": 32,
+   "frames": 4,
+   "fps": 12,
+   "loop": true
+  },
+  {
+   "key": "enemy_fighter_heavy_bankr",
+   "src": "assets/sprites/enemy_fighter_heavy_bankr.png",
+   "frameW": 32,
+   "frameH": 32,
+   "frames": 4,
+   "fps": 12,
+   "loop": true
+  },
+  {
+   "key": "enemy_bomber_bankl",
+   "src": "assets/sprites/enemy_bomber_bankl.png",
+   "frameW": 40,
+   "frameH": 32,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_bomber_bankr",
+   "src": "assets/sprites/enemy_bomber_bankr.png",
+   "frameW": 40,
+   "frameH": 32,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_drone_kamikaze_bankl",
+   "src": "assets/sprites/enemy_drone_kamikaze_bankl.png",
+   "frameW": 12,
+   "frameH": 12,
+   "frames": 4,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_drone_kamikaze_bankr",
+   "src": "assets/sprites/enemy_drone_kamikaze_bankr.png",
+   "frameW": 12,
+   "frameH": 12,
+   "frames": 4,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_missile_carrier_bankl",
+   "src": "assets/sprites/enemy_missile_carrier_bankl.png",
+   "frameW": 40,
+   "frameH": 40,
+   "frames": 8,
+   "fps": 6,
+   "loop": true
+  },
+  {
+   "key": "enemy_missile_carrier_bankr",
+   "src": "assets/sprites/enemy_missile_carrier_bankr.png",
+   "frameW": 40,
+   "frameH": 40,
+   "frames": 8,
+   "fps": 6,
+   "loop": true
+  },
+  {
+   "key": "enemy_helicopter_bankl",
+   "src": "assets/sprites/enemy_helicopter_bankl.png",
+   "frameW": 32,
+   "frameH": 32,
+   "frames": 6,
+   "fps": 20,
+   "loop": true
+  },
+  {
+   "key": "enemy_helicopter_bankr",
+   "src": "assets/sprites/enemy_helicopter_bankr.png",
+   "frameW": 32,
+   "frameH": 32,
+   "frames": 6,
+   "fps": 20,
+   "loop": true
+  },
+  {
+   "key": "enemy_gunship_light_bankl",
+   "src": "assets/sprites/enemy_gunship_light_bankl.png",
+   "frameW": 28,
+   "frameH": 32,
+   "frames": 6,
+   "fps": 22,
+   "loop": true
+  },
+  {
+   "key": "enemy_gunship_light_bankr",
+   "src": "assets/sprites/enemy_gunship_light_bankr.png",
+   "frameW": 28,
+   "frameH": 32,
+   "frames": 6,
+   "fps": 22,
+   "loop": true
+  },
+  {
+   "key": "enemy_mine_layer_dmg",
+   "src": "assets/sprites/enemy_mine_layer_dmg.png",
+   "frameW": 28,
+   "frameH": 28,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_fighter_basic_dmg",
+   "src": "assets/sprites/enemy_fighter_basic_dmg.png",
+   "frameW": 20,
+   "frameH": 20,
+   "frames": 4,
+   "fps": 14,
+   "loop": true
+  },
+  {
+   "key": "enemy_interceptor_dmg",
+   "src": "assets/sprites/enemy_interceptor_dmg.png",
+   "frameW": 16,
+   "frameH": 24,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_fighter_heavy_dmg",
+   "src": "assets/sprites/enemy_fighter_heavy_dmg.png",
+   "frameW": 32,
+   "frameH": 32,
+   "frames": 4,
+   "fps": 12,
+   "loop": true
+  },
+  {
+   "key": "enemy_bomber_dmg",
+   "src": "assets/sprites/enemy_bomber_dmg.png",
+   "frameW": 40,
+   "frameH": 32,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_drone_kamikaze_dmg",
+   "src": "assets/sprites/enemy_drone_kamikaze_dmg.png",
+   "frameW": 12,
+   "frameH": 12,
+   "frames": 4,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_missile_carrier_dmg",
+   "src": "assets/sprites/enemy_missile_carrier_dmg.png",
+   "frameW": 40,
+   "frameH": 40,
+   "frames": 8,
+   "fps": 6,
+   "loop": true
+  },
+  {
+   "key": "enemy_helicopter_dmg",
+   "src": "assets/sprites/enemy_helicopter_dmg.png",
+   "frameW": 32,
+   "frameH": 32,
+   "frames": 6,
+   "fps": 20,
+   "loop": true
+  },
+  {
+   "key": "enemy_gunship_light_dmg",
+   "src": "assets/sprites/enemy_gunship_light_dmg.png",
+   "frameW": 28,
+   "frameH": 32,
+   "frames": 6,
+   "fps": 22,
+   "loop": true
+  },
+  {
+   "key": "enemy_shield_drone_dmg",
+   "src": "assets/sprites/enemy_shield_drone_dmg.png",
+   "frameW": 16,
+   "frameH": 16,
+   "frames": 4,
+   "fps": 8,
+   "loop": true
+  },
+  {
+   "key": "enemy_tank_light_dmg",
+   "src": "assets/sprites/enemy_tank_light_dmg.png",
+   "frameW": 16,
+   "frameH": 16,
+   "frames": 4,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_tank_heavy_dmg",
+   "src": "assets/sprites/enemy_tank_heavy_dmg.png",
+   "frameW": 24,
+   "frameH": 24,
+   "frames": 4,
+   "fps": 7,
+   "loop": true
+  },
+  {
+   "key": "enemy_sam_site_dmg",
+   "src": "assets/sprites/enemy_sam_site_dmg.png",
+   "frameW": 20,
+   "frameH": 20,
    "frames": 1
+  },
+  {
+   "key": "enemy_sand_crawler_dmg",
+   "src": "assets/sprites/enemy_sand_crawler_dmg.png",
+   "frameW": 20,
+   "frameH": 24,
+   "frames": 4,
+   "fps": 12,
+   "loop": true
+  },
+  {
+   "key": "enemy_ice_walker_dmg",
+   "src": "assets/sprites/enemy_ice_walker_dmg.png",
+   "frameW": 24,
+   "frameH": 24,
+   "frames": 4,
+   "fps": 5,
+   "loop": true
+  },
+  {
+   "key": "enemy_aa_turret_dmg",
+   "src": "assets/sprites/enemy_aa_turret_dmg.png",
+   "frameW": 16,
+   "frameH": 16,
+   "frames": 1
+  },
+  {
+   "key": "enemy_missile_launcher_dmg",
+   "src": "assets/sprites/enemy_missile_launcher_dmg.png",
+   "frameW": 20,
+   "frameH": 20,
+   "frames": 2,
+   "fps": 3,
+   "loop": true
+  },
+  {
+   "key": "enemy_radar_station_dmg",
+   "src": "assets/sprites/enemy_radar_station_dmg.png",
+   "frameW": 24,
+   "frameH": 24,
+   "frames": 8,
+   "fps": 8,
+   "loop": true
+  },
+  {
+   "key": "enemy_military_base_dmg",
+   "src": "assets/sprites/enemy_military_base_dmg.png",
+   "frameW": 48,
+   "frameH": 48,
+   "frames": 2,
+   "fps": 2,
+   "loop": true
+  },
+  {
+   "key": "enemy_armored_vehicle_dmg",
+   "src": "assets/sprites/enemy_armored_vehicle_dmg.png",
+   "frameW": 16,
+   "frameH": 24,
+   "frames": 4,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_gunboat_dmg",
+   "src": "assets/sprites/enemy_gunboat_dmg.png",
+   "frameW": 16,
+   "frameH": 32,
+   "frames": 4,
+   "fps": 8,
+   "loop": true
+  },
+  {
+   "key": "enemy_destroyer_dmg",
+   "src": "assets/sprites/enemy_destroyer_dmg.png",
+   "frameW": 24,
+   "frameH": 64,
+   "frames": 4,
+   "fps": 6,
+   "loop": true
+  },
+  {
+   "key": "enemy_oil_tank_dmg",
+   "src": "assets/sprites/enemy_oil_tank_dmg.png",
+   "frameW": 28,
+   "frameH": 28,
+   "frames": 1
+  },
+  {
+   "key": "enemy_hangar_dmg",
+   "src": "assets/sprites/enemy_hangar_dmg.png",
+   "frameW": 48,
+   "frameH": 32,
+   "frames": 2,
+   "fps": 2,
+   "loop": true
+  },
+  {
+   "key": "enemy_ice_turret_dmg",
+   "src": "assets/sprites/enemy_ice_turret_dmg.png",
+   "frameW": 16,
+   "frameH": 16,
+   "frames": 1
+  },
+  {
+   "key": "enemy_citadel_turret_dmg",
+   "src": "assets/sprites/enemy_citadel_turret_dmg.png",
+   "frameW": 20,
+   "frameH": 20,
+   "frames": 1
+  },
+  {
+   "key": "enemy_mine_layer_bankl_dmg",
+   "src": "assets/sprites/enemy_mine_layer_bankl_dmg.png",
+   "frameW": 28,
+   "frameH": 28,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_mine_layer_bankr_dmg",
+   "src": "assets/sprites/enemy_mine_layer_bankr_dmg.png",
+   "frameW": 28,
+   "frameH": 28,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_fighter_basic_bankl_dmg",
+   "src": "assets/sprites/enemy_fighter_basic_bankl_dmg.png",
+   "frameW": 20,
+   "frameH": 20,
+   "frames": 4,
+   "fps": 14,
+   "loop": true
+  },
+  {
+   "key": "enemy_fighter_basic_bankr_dmg",
+   "src": "assets/sprites/enemy_fighter_basic_bankr_dmg.png",
+   "frameW": 20,
+   "frameH": 20,
+   "frames": 4,
+   "fps": 14,
+   "loop": true
+  },
+  {
+   "key": "enemy_interceptor_bankl_dmg",
+   "src": "assets/sprites/enemy_interceptor_bankl_dmg.png",
+   "frameW": 16,
+   "frameH": 24,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_interceptor_bankr_dmg",
+   "src": "assets/sprites/enemy_interceptor_bankr_dmg.png",
+   "frameW": 16,
+   "frameH": 24,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_fighter_heavy_bankl_dmg",
+   "src": "assets/sprites/enemy_fighter_heavy_bankl_dmg.png",
+   "frameW": 32,
+   "frameH": 32,
+   "frames": 4,
+   "fps": 12,
+   "loop": true
+  },
+  {
+   "key": "enemy_fighter_heavy_bankr_dmg",
+   "src": "assets/sprites/enemy_fighter_heavy_bankr_dmg.png",
+   "frameW": 32,
+   "frameH": 32,
+   "frames": 4,
+   "fps": 12,
+   "loop": true
+  },
+  {
+   "key": "enemy_bomber_bankl_dmg",
+   "src": "assets/sprites/enemy_bomber_bankl_dmg.png",
+   "frameW": 40,
+   "frameH": 32,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_bomber_bankr_dmg",
+   "src": "assets/sprites/enemy_bomber_bankr_dmg.png",
+   "frameW": 40,
+   "frameH": 32,
+   "frames": 4,
+   "fps": 16,
+   "loop": true
+  },
+  {
+   "key": "enemy_drone_kamikaze_bankl_dmg",
+   "src": "assets/sprites/enemy_drone_kamikaze_bankl_dmg.png",
+   "frameW": 12,
+   "frameH": 12,
+   "frames": 4,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_drone_kamikaze_bankr_dmg",
+   "src": "assets/sprites/enemy_drone_kamikaze_bankr_dmg.png",
+   "frameW": 12,
+   "frameH": 12,
+   "frames": 4,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_missile_carrier_bankl_dmg",
+   "src": "assets/sprites/enemy_missile_carrier_bankl_dmg.png",
+   "frameW": 40,
+   "frameH": 40,
+   "frames": 8,
+   "fps": 6,
+   "loop": true
+  },
+  {
+   "key": "enemy_missile_carrier_bankr_dmg",
+   "src": "assets/sprites/enemy_missile_carrier_bankr_dmg.png",
+   "frameW": 40,
+   "frameH": 40,
+   "frames": 8,
+   "fps": 6,
+   "loop": true
+  },
+  {
+   "key": "enemy_helicopter_bankl_dmg",
+   "src": "assets/sprites/enemy_helicopter_bankl_dmg.png",
+   "frameW": 32,
+   "frameH": 32,
+   "frames": 6,
+   "fps": 20,
+   "loop": true
+  },
+  {
+   "key": "enemy_helicopter_bankr_dmg",
+   "src": "assets/sprites/enemy_helicopter_bankr_dmg.png",
+   "frameW": 32,
+   "frameH": 32,
+   "frames": 6,
+   "fps": 20,
+   "loop": true
+  },
+  {
+   "key": "enemy_gunship_light_bankl_dmg",
+   "src": "assets/sprites/enemy_gunship_light_bankl_dmg.png",
+   "frameW": 28,
+   "frameH": 32,
+   "frames": 6,
+   "fps": 22,
+   "loop": true
+  },
+  {
+   "key": "enemy_gunship_light_bankr_dmg",
+   "src": "assets/sprites/enemy_gunship_light_bankr_dmg.png",
+   "frameW": 28,
+   "frameH": 32,
+   "frames": 6,
+   "fps": 22,
+   "loop": true
+  },
+  {
+   "key": "enemy_tank_light_burn",
+   "src": "assets/sprites/enemy_tank_light_burn.png",
+   "frameW": 16,
+   "frameH": 16,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_tank_heavy_burn",
+   "src": "assets/sprites/enemy_tank_heavy_burn.png",
+   "frameW": 24,
+   "frameH": 24,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_sam_site_burn",
+   "src": "assets/sprites/enemy_sam_site_burn.png",
+   "frameW": 20,
+   "frameH": 20,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_sand_crawler_burn",
+   "src": "assets/sprites/enemy_sand_crawler_burn.png",
+   "frameW": 20,
+   "frameH": 24,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_ice_walker_burn",
+   "src": "assets/sprites/enemy_ice_walker_burn.png",
+   "frameW": 24,
+   "frameH": 24,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_aa_turret_burn",
+   "src": "assets/sprites/enemy_aa_turret_burn.png",
+   "frameW": 16,
+   "frameH": 16,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_missile_launcher_burn",
+   "src": "assets/sprites/enemy_missile_launcher_burn.png",
+   "frameW": 20,
+   "frameH": 20,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_radar_station_burn",
+   "src": "assets/sprites/enemy_radar_station_burn.png",
+   "frameW": 24,
+   "frameH": 24,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_military_base_burn",
+   "src": "assets/sprites/enemy_military_base_burn.png",
+   "frameW": 48,
+   "frameH": 48,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_armored_vehicle_burn",
+   "src": "assets/sprites/enemy_armored_vehicle_burn.png",
+   "frameW": 16,
+   "frameH": 24,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_gunboat_burn",
+   "src": "assets/sprites/enemy_gunboat_burn.png",
+   "frameW": 16,
+   "frameH": 32,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_destroyer_burn",
+   "src": "assets/sprites/enemy_destroyer_burn.png",
+   "frameW": 24,
+   "frameH": 64,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_oil_tank_burn",
+   "src": "assets/sprites/enemy_oil_tank_burn.png",
+   "frameW": 28,
+   "frameH": 28,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_hangar_burn",
+   "src": "assets/sprites/enemy_hangar_burn.png",
+   "frameW": 48,
+   "frameH": 32,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_ice_turret_burn",
+   "src": "assets/sprites/enemy_ice_turret_burn.png",
+   "frameW": 16,
+   "frameH": 16,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "enemy_citadel_turret_burn",
+   "src": "assets/sprites/enemy_citadel_turret_burn.png",
+   "frameW": 20,
+   "frameH": 20,
+   "frames": 3,
+   "fps": 10,
+   "loop": true
+  },
+  {
+   "key": "debris_s",
+   "src": "assets/sprites/debris_s.png",
+   "frameW": 6,
+   "frameH": 6,
+   "frames": 4,
+   "fps": 0,
+   "loop": false
+  },
+  {
+   "key": "debris_m",
+   "src": "assets/sprites/debris_m.png",
+   "frameW": 8,
+   "frameH": 8,
+   "frames": 4,
+   "fps": 0,
+   "loop": false
+  },
+  {
+   "key": "debris_l",
+   "src": "assets/sprites/debris_l.png",
+   "frameW": 12,
+   "frameH": 12,
+   "frames": 4,
+   "fps": 0,
+   "loop": false
+  },
+  {
+   "key": "fx_muzzle_e",
+   "src": "assets/sprites/fx_muzzle_e.png",
+   "frameW": 8,
+   "frameH": 8,
+   "frames": 3,
+   "fps": 30,
+   "loop": false
+  },
+  {
+   "key": "fx_muzzle_e_l",
+   "src": "assets/sprites/fx_muzzle_e_l.png",
+   "frameW": 12,
+   "frameH": 12,
+   "frames": 3,
+   "fps": 30,
+   "loop": false
   },
   {
    "key": "boss_carrier_hull",

@@ -29,13 +29,13 @@ export const PLAYER_WEAPONS: PlayerWeaponDef[] = [
 ];
 
 export const UPGRADES: UpgradeDef[] = [
-  { id: "damage", name: "DAMAGE", desc: "+8% weapon damage per level", maxLevel: 8, baseCost: 90, perLevel: 0.08 },
-  { id: "fireRate", name: "FIRE RATE", desc: "+6% fire rate per level", maxLevel: 8, baseCost: 100, perLevel: 0.06 },
-  { id: "hull", name: "HULL", desc: "+10 hull HP per level", maxLevel: 8, baseCost: 70, perLevel: 10 },
-  { id: "shield", name: "SHIELD", desc: "+8 shield and faster regeneration per level", maxLevel: 8, baseCost: 80, perLevel: 8 },
-  { id: "bombs", name: "ORDNANCE", desc: "+1 bomb capacity per level", maxLevel: 8, baseCost: 120, perLevel: 1 },
-  { id: "speed", name: "ENGINES", desc: "+4% speed per level", maxLevel: 8, baseCost: 60, perLevel: 0.04 },
-  { id: "flares", name: "FLARES", desc: "-0.8 s flare cooldown per level", maxLevel: 8, baseCost: 60, perLevel: 0.8 },
+  { id: "damage", name: "DAMAGE", desc: "+10% weapon damage per level", maxLevel: 8, baseCost: 170, perLevel: 0.1 },
+  { id: "fireRate", name: "FIRE RATE", desc: "+7% fire rate per level", maxLevel: 8, baseCost: 180, perLevel: 0.07 },
+  { id: "hull", name: "HULL", desc: "+15 hull HP per level", maxLevel: 8, baseCost: 120, perLevel: 15 },
+  { id: "shield", name: "SHIELD", desc: "+10 shield and faster regeneration per level", maxLevel: 8, baseCost: 130, perLevel: 10 },
+  { id: "bombs", name: "ORDNANCE", desc: "+1 bomb capacity per level", maxLevel: 8, baseCost: 170, perLevel: 1 },
+  { id: "speed", name: "ENGINES", desc: "+4% speed per level", maxLevel: 8, baseCost: 100, perLevel: 0.04 },
+  { id: "flares", name: "FLARES", desc: "-0.8 s flare cooldown per level", maxLevel: 8, baseCost: 100, perLevel: 0.8 },
 ];
 
 export const AIRCRAFT: AircraftDef[] = [
@@ -77,17 +77,20 @@ export function selectedSkinFor(save: SaveData, aircraft: string): SkinId {
 export const BASE_HP = 100;
 export const BASE_SHIELD = 40;
 export const BASE_SPEED = 270;
-/** shield points / s once regen starts (QA #1: was 10 -> 4; 10 refilled the 40 shield in 4 s between every volley) */
-export const BASE_SHIELD_REGEN = 4;
-/** seconds without damage before the shield regenerates (was 3) */
-export const BASE_SHIELD_DELAY = 4;
+/** shield points / s once regen starts (QA #1: 10 -> 4; BALANCE_SPEC P2: 4 -> 3, so SHIELD upgrades (+1.5/s per level) matter) */
+export const BASE_SHIELD_REGEN = 3;
+/** seconds without damage before the shield regenerates (was 3, then 4; BALANCE_SPEC P2: 5) */
+export const BASE_SHIELD_DELAY = 5;
 export const BASE_FLARE_CD = 12;
 export const MIN_FLARE_CD = 7;
+
+/** price curve exponent (BALANCE_SPEC U2: 1.4 -> 1.25; tests/qa/economy.mjs mirrors it) */
+export const SHOP_COST_EXP = 1.25;
 
 /** cost of buying the NEXT level of an upgrade, given its current level (Infinity when maxed). */
 export function shopCost(def: UpgradeDef, level: number): number {
   if (level >= def.maxLevel) return Infinity;
-  return Math.round(def.baseCost * Math.pow(level + 1, 1.4));
+  return Math.round(def.baseCost * Math.pow(level + 1, SHOP_COST_EXP));
 }
 
 function lvl(save: SaveData, id: UpgradeId): number {

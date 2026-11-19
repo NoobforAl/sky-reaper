@@ -86,3 +86,19 @@ Every copy is spawned with `opts.data.wideCopy === true`. Request (Engine, src/c
 `e.counted = def.destructible !== false && !o.bossId && o.data?.wideCopy !== true;` so `spawned` / `killRate` (and the
 jungle "Destroy 65% of enemies" objective) mean the same on both layouts. Kills of copies still score and count in
 `kills` / tag kills. Optionally document `data.wideCopy` on `EnemySpawnOpts.data` in contracts/enemies.ts.
+
+## enemy (round 5) — THREAT bullet speed / fire rate already applied in src/patterns + src/enemies (FYI Engine + Level)
+- Regular enemies read `world.threat` (0..3) via `threatOf(world)` (src/patterns/tiers.ts): fire rate x(1 + 0.10*L) in
+  `tickAttacks`, non-missile non-hazard bullet speed x(1 + 0.08*L) via `tieredPattern(p, tier, threat)` (cached per tier x threat).
+  **Engine: do NOT also multiply `b.speed` by THREAT in `World.spawnBullet` (BALANCE_SPEC §7 table row 1), or regular bullets get it twice.**
+  Bosses do not go through tieredPattern; src/bosses applies its own THREAT factor (B2).
+- E1 chapter HP: `enemySystem.onSpawn` tops regular spawns up to BALANCE_SPEC E1 (1 / 1.1 / 1.25 / 1.4 / 1.55) only while the
+  spawn's `hpScale` still equals the pre-round-5 chapter default (1 / 1 / 1.05 / 1.1 / 1.2). If the Level agent changes the
+  `tl.setDefaults({ hpScale })` lines to the E1 values, this becomes a no-op (no double application). Bosses excluded.
+- Separation (round3 #7): levels can opt a spawn out with `opts.data.noSeparate = true` (e.g. units glued to a set-piece).
+
+## level (round 5) — boss HUD telemetry (optional)
+`BossBase.hud()` now fills `BossHudInfo.escalation` (0..3, soft-timer ENRAGED stage) and also carries an extra
+`gatedSec: number[]` (seconds each phase spent hardened by the min-phase gate, QA R4-2) on the same object. Request:
+optionally document `gatedSec?: number[]` on `BossHudInfo` so QA tools can read it without a cast. No change needed
+for the game to work.

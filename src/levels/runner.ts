@@ -2,10 +2,12 @@
  * LevelRunner: fires timeline events, runs formations (with stagger), weather + wind gusts, tutorial hints.
  * Called once per sim step by the Engine (and in 0.25 s chunks by World.fastForward).
  */
-import { DESIGN_W, GAME_W, PIXEL_SCALE, PICKUP_KINDS, WIDE, X_SCALE, type ChapterDef, type EnemySpawnOpts, type LevelEvent, type LevelRunner, type PickupKind, type WorldAPI } from "../contracts";
+import { DESIGN_W, GAME_W, PIXEL_SCALE, PICKUP_KINDS, WIDE, X_SCALE, type ChapterDef, type EnemyDef, type EnemySpawnOpts, type LevelEvent, type LevelRunner, type PickupKind, type WorldAPI } from "../contracts";
 import { enemySystem } from "../enemies";
 import { BiomeBackground, riverW, riverX } from "./backgrounds";
 import { formationSlot } from "./builders";
+import { bannerText, type BannerI18n } from "./i18n";
+import { boxFor, boxesOverlap, OVERLAP_WINDOW, type SpawnBox } from "./spacing";
 import { HINT_SECONDS, hintText } from "./tutorial";
 import type { ChapterScript, FeatureCue } from "./types";
 
@@ -81,6 +83,101 @@ interface LiveFeature {
   mirrorX: number | null;
 }
 
+/** scroll speed in effect at time t (last scroll event at or before t) */
+export function scrollSpeedAt(def: ChapterDef, t: number): number {
+  let s = def.scrollSpeed;
+  let at = -1;
+  for (const e of def.events) if (e.type === "scroll" && e.t <= t && e.t >= at) {
+    s = e.speed;
+    at = e.t;
+  }
+  return s;
+}
+
+/** live features of a chapter (authored cue mapped to the live field + world-y span) */
+function buildFeatures(script: ChapterScript, S: (t: number) => number): LiveFeature[] {
+  return script.features.map((f) => {
+    const x = mapX(f.x);
+    const mx = GAME_W - x;
+    return { cue: f, wy0: S(f.t), wy1: S(f.t) + f.len, x, mirrorX: WIDE && Math.abs(mx - x) >= GAME_W * RUNNER_TUNING.dupMinGap ? mx : null };
+  });
+}
+
+function defaultYOf(enemy: string): number {
+  const d = enemySystem.defs[enemy];
+  const h = d ? (d.size[1] * PIXEL_SCALE) / 2 : 24;
+  return -(h + RUNNER_TUNING.spawnMargin);
+}
+
+/**
+ * Live anchor x for an authored event x. Ground units placed next to a road/rail/runway keep their offset to that
+ * feature (the feature itself is mapped as a whole); everything else uses mapX.
+ */
+function placeAnchor(features: LiveFeature[], S: (t: number) => number, enemy: string, x: number, t: number, y: number | undefined): { x: number; tied: LiveFeature | null } {
+  if (!WIDE) return { x, tied: null };
+  const d = enemySystem.defs[enemy];
+  if (d && d.layer === "ground") {
+    const wy = S(t) - (y ?? defaultYOf(enemy));
+    for (const f of features) {
+      if (Math.abs(x - f.cue.x) > RUNNER_TUNING.featureSnap) continue;
+      if (wy < f.wy0 - 160 || wy > f.wy1 + 160) continue;
+      return { x: f.x + (x - f.cue.x), tied: f };
+    }
+  }
+  return { x: mapX(x), tied: null };
+}
+
+/** boats in river biomes are squeezed onto the river (see ChapterRunner.spawn): spacing uses that x */
+function riverSnapX(biome: string, enemy: string, x: number): number {
+  if ((biome === "jungle" || biome === "arctic") && NAVAL.has(enemy)) return GAME_W / 2 + ((x - GAME_W / 2) / X_SCALE) * 0.3;
+  return x;
+}
+
+/**
+ * Spacing boxes of every authored unit on the live field (no wide copies), sorted by spawn time. Used by the runner to
+ * place wide copies and by sanity.ts to check authored waves (round 5, #7).
+ */
+export function authoredBoxes(script: ChapterScript): SpawnBox[] {
+  const def = script.def;
+  const S = scrollProfile(def);
+  const features = buildFeatures(script, S);
+  const out: SpawnBox[] = [];
+  for (const e of def.events) {
+    if (e.type !== "spawn" && e.type !== "formation") continue;
+    const d = enemySystem.defs[e.enemy];
+    if (!d || d.destructible === false) continue;
+    const isForm = e.type === "formation";
+    const n = isForm ? Math.max(1, e.count | 0) : 1;
+    const anchor = placeAnchor(features, S, e.enemy, e.x, e.t, e.y);
+    const scroll = scrollSpeedAt(def, e.t);
+    for (let i = 0; i < n; i++) {
+      let ox = 0;
+      let oy = 0;
+      if (isForm) [ox, oy] = formationSlot(e.shape, i, n, e.dx, e.dy);
+      const sox = anchor.tied ? ox : ox * FORMATION_SPREAD;
+      const y = e.y !== undefined ? e.y + oy : defaultYOf(e.enemy) + oy;
+      const delay = isForm ? ((e.staggerMs ?? 0) * i) / 1000 : 0;
+      const b = boxFor(d, riverSnapX(def.biome, e.enemy, anchor.x + sox), y, e.t + delay, scroll, e.opts?.dir ?? 1, {} as SpawnBox);
+      b.tag = `t=${e.t} ${e.enemy}[${i}]`;
+      out.push(b);
+    }
+  }
+  out.sort((a, b) => a.t - b.t);
+  return out;
+}
+
+/** first index in a t-sorted box list with t >= time */
+function lowerBound(list: SpawnBox[], time: number): number {
+  let lo = 0;
+  let hi = list.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (list[mid]!.t < time) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 /** scroll distance travelled at time t, from the chapter's scroll events (Engine eases speed changes; error is tiny) */
 export function scrollProfile(def: ChapterDef): (t: number) => number {
   const pts: Array<{ t: number; speed: number }> = [{ t: 0, speed: def.scrollSpeed }];
@@ -125,11 +222,7 @@ export class ChapterRunner implements LevelRunner {
     const S = scrollProfile(script.def);
     this.scrollAt = S;
     const T = RUNNER_TUNING;
-    this.features = script.features.map((f) => {
-      const x = mapX(f.x);
-      const mx = GAME_W - x;
-      return { cue: f, wy0: S(f.t), wy1: S(f.t) + f.len, x, mirrorX: WIDE && Math.abs(mx - x) >= GAME_W * T.dupMinGap ? mx : null };
-    });
+    this.features = buildFeatures(script, S);
     const bgFeatures: Array<{ kind: FeatureCue["kind"]; x: number; wy0: number; wy1: number }> = [];
     for (const f of this.features) {
       bgFeatures.push({ kind: f.cue.kind, x: f.x, wy0: f.wy0, wy1: f.wy1 });
@@ -137,6 +230,7 @@ export class ChapterRunner implements LevelRunner {
     }
     this.background = new BiomeBackground(script.def, bgFeatures);
     this.dupRate = WIDE ? Math.max(0, Math.min(T.dupMax, (X_SCALE - 1) * T.dupPerScale)) : 0;
+    this.authored = this.dupRate > 0 ? authoredBoxes(script) : [];
   }
 
   private features: LiveFeature[];
@@ -145,6 +239,15 @@ export class ChapterRunner implements LevelRunner {
   private dupRate: number;
   private dupAcc = 0;
   private flankSide = 1;
+  /** spacing boxes of authored units (wide only) + copies placed so far (pruned by time) */
+  private authored: SpawnBox[];
+  private copies: SpawnBox[] = [];
+  /** per-event member scratch (event-time only) */
+  private mx: number[] = [];
+  private my: Array<number | undefined> = [];
+  private md: number[] = [];
+  /** wide copies skipped because every placement overlapped (QA / debug) */
+  copiesSkipped = 0;
 
   get progress(): number {
     if (this.bossStarted) return 1;
@@ -179,27 +282,37 @@ export class ChapterRunner implements LevelRunner {
         const isForm = e.type === "formation";
         const n = isForm ? Math.max(1, e.count | 0) : 1;
         const anchor = this.place(e.enemy, e.x, e.t, e.y);
-        const copy = this.copyPlan(e.enemy, anchor, world);
+        // member offsets (feature-tied ground units keep their exact offsets so convoys stay on the road; others
+        // spread with the field)
+        const MX = this.mx;
+        const MY = this.my;
+        const MD = this.md;
+        MX.length = MY.length = MD.length = n;
         for (let i = 0; i < n; i++) {
           let ox = 0;
           let oy = 0;
           if (isForm) [ox, oy] = formationSlot(e.shape, i, n, e.dx, e.dy);
-          // feature-tied ground units keep their exact offsets (convoys stay on the road); others spread with the field
-          const sox = anchor.tied ? ox : ox * FORMATION_SPREAD;
-          const y = e.y !== undefined ? e.y + oy : oy !== 0 ? this.defaultY(e.enemy) + oy : undefined;
-          const delay = isForm ? ((e.staggerMs ?? 0) * i) / 1000 : 0;
-          this.emitSpawn(world, e.t, delay, e.enemy, anchor.x + sox, y, e.opts ? { ...e.opts } : undefined);
-          if (copy) {
-            const cx = copy.mirror ? copy.x - sox : copy.x + sox;
-            this.emitSpawn(world, e.t, delay + (anchor.tied ? 0 : RUNNER_TUNING.dupDelay), e.enemy, cx, y, copyOpts(e.opts, copy.mirror));
+          MX[i] = anchor.tied ? ox : ox * FORMATION_SPREAD;
+          MY[i] = e.y !== undefined ? e.y + oy : oy !== 0 ? this.defaultY(e.enemy) + oy : undefined;
+          MD[i] = isForm ? ((e.staggerMs ?? 0) * i) / 1000 : 0;
+          this.emitSpawn(world, e.t, MD[i]!, e.enemy, anchor.x + MX[i]!, MY[i], e.opts ? { ...e.opts } : undefined);
+        }
+        const copy = this.copyPlan(e, anchor, world);
+        if (copy) {
+          for (let i = 0; i < n; i++) {
+            const cx = copy.mirror ? copy.x - MX[i]! : copy.x + MX[i]!;
+            this.emitSpawn(world, e.t, MD[i]! + copy.delay, e.enemy, cx, MY[i], copyOpts(e.opts, copy.mirror));
           }
         }
         break;
       }
-      case "banner":
-        world.events.emit("banner", { text: e.text, subtext: e.subtext, ms: e.ms ?? 2400 });
+      case "banner": {
+        // round 5 i18n: authored banners carry their string keys; English text stays the fallback
+        const b = bannerText((e as { i18n?: BannerI18n }).i18n, e.text, e.subtext);
+        world.events.emit("banner", { text: b.text, subtext: b.subtext, ms: e.ms ?? 2400 });
         world.events.emit("waveStarted", { label: e.text });
         break;
+      }
       case "scroll":
         world.setScrollSpeed(e.speed);
         break;
@@ -238,51 +351,89 @@ export class ChapterRunner implements LevelRunner {
     else this.enqueue({ t: t + delay, enemy, x, y, opts });
   }
 
-  /**
-   * Live anchor x for an authored event x. Ground units placed next to a road/rail/runway keep their offset to that
-   * feature (the feature itself is mapped as a whole); everything else uses mapX.
-   */
   private place(enemy: string, x: number, t: number, y: number | undefined): { x: number; tied: LiveFeature | null } {
-    if (!WIDE) return { x, tied: null };
-    const d = enemySystem.defs[enemy];
-    if (d && d.layer === "ground") {
-      const wy = this.scrollAt(t) - (y ?? this.defaultY(enemy));
-      for (const f of this.features) {
-        if (Math.abs(x - f.cue.x) > RUNNER_TUNING.featureSnap) continue;
-        if (wy < f.wy0 - 160 || wy > f.wy1 + 160) continue;
-        return { x: f.x + (x - f.cue.x), tied: f };
-      }
-    }
-    return { x: mapX(x), tied: null };
+    return placeAnchor(this.features, this.scrollAt, enemy, x, t, y);
   }
 
   /**
-   * Wide fields only: should this enemy event get a copy, and where? Mirrored across the centre when that is far
-   * enough from the original (offsets mirrored, `dir` flipped), else a flanking copy shifted to alternating sides.
+   * Wide fields only: should this enemy event get a copy, and where? Candidates in order: mirrored across the centre
+   * when far enough from the original (offsets mirrored, `dir` flipped), else a flanking copy shifted to alternating
+   * sides (shift >= the formation's own width, so the two groups never interleave). A candidate is rejected when any
+   * copied member would overlap an authored unit or an earlier copy (round 5, #7: e.g. the mirror of an [L, R] pair
+   * lands exactly on its twin); when every candidate overlaps, the copy is skipped and the next event gets it.
    * Ground units tied to a feature are copied onto the feature's mirrored twin. Boats in river biomes never copy.
+   * Reads the member scratch (mx/my/md) filled by fire().
    */
-  private copyPlan(enemy: string, anchor: { x: number; tied: LiveFeature | null }, world: WorldAPI): { x: number; mirror: boolean } | null {
+  private copyPlan(e: Extract<LevelEvent, { type: "spawn" | "formation" }>, anchor: { x: number; tied: LiveFeature | null }, world: WorldAPI): { x: number; mirror: boolean; delay: number } | null {
     if (this.dupRate <= 0) return null;
     const T = RUNNER_TUNING;
+    const enemy = e.enemy;
     if (NAVAL.has(enemy) && (this.chapter.biome === "jungle" || this.chapter.biome === "arctic")) return null;
     const d = enemySystem.defs[enemy];
     if (!d || d.destructible === false) return null;
     if (world.enemies.length >= T.dupMaxAlive) return null;
+    const dir = e.opts?.dir ?? 1;
     if (anchor.tied) {
       const f = anchor.tied;
+      if (f.mirrorX === null) return null;
       // mirrored twin feature: same offset, mirrored (copy.x - offset == mirrorX - (anchor.x - f.x))
-      return f.mirrorX === null ? null : { x: f.mirrorX - (anchor.x - f.x), mirror: true };
+      const x = f.mirrorX - (anchor.x - f.x);
+      return this.copyFits(d, e.t, x, true, 0, -dir) ? { x, mirror: true, delay: 0 } : null;
     }
     this.dupAcc += this.dupRate;
     if (this.dupAcc < 1) return null;
-    this.dupAcc -= 1;
     const ax = anchor.x;
+    const delay = T.dupDelay;
+    let span = 0;
+    for (let i = 0; i < this.mx.length; i++) span = Math.max(span, Math.abs(this.mx[i]!));
+    const need = 2 * span + d.size[0] * PIXEL_SCALE + 8;
+    const offEdge = ax < 0 || ax > GAME_W; // side-entry events (sideAmbush) stay off-screen on their copy too
     const mx = GAME_W - ax;
-    if (Math.abs(mx - ax) >= GAME_W * T.dupMinGap) return { x: mx, mirror: true };
-    // near the centre: flank on alternating sides
-    this.flankSide = -this.flankSide;
-    return { x: ax + this.flankSide * GAME_W * T.dupFlank, mirror: false };
+    const gap = Math.abs(mx - ax);
+    if (gap >= GAME_W * T.dupMinGap && gap >= need && this.copyFits(d, e.t, mx, true, delay, -dir)) return this.takeCopy(mx, true, delay);
+    if (offEdge) return null; // flanking an off-screen entry would leave the field: keep the credit for the next event
+    // flank on alternating sides, far enough that the copied formation does not interleave with the original
+    const shift = Math.max(GAME_W * T.dupFlank, need);
+    for (let k = 0; k < 2; k++) {
+      this.flankSide = -this.flankSide;
+      const x = ax + this.flankSide * shift;
+      if (x - span < 20 || x + span > GAME_W - 20) continue;
+      if (this.copyFits(d, e.t, x, false, delay, dir)) return this.takeCopy(x, false, delay);
+    }
+    this.copiesSkipped++;
+    return null;
   }
+
+  private takeCopy(x: number, mirror: boolean, delay: number): { x: number; mirror: boolean; delay: number } {
+    this.dupAcc -= 1;
+    return { x, mirror, delay };
+  }
+
+  /** would a copy anchored at x overlap an authored unit or an earlier copy? Registers the copy's boxes when it fits. */
+  private copyFits(d: EnemyDef, t: number, x: number, mirror: boolean, delay: number, dir: number): boolean {
+    const n = this.mx.length;
+    const scroll = scrollSpeedAt(this.chapter, t);
+    const cand = this.candBoxes;
+    while (cand.length < n) cand.push({} as SpawnBox);
+    for (let i = 0; i < n; i++) {
+      const cx = mirror ? x - this.mx[i]! : x + this.mx[i]!;
+      boxFor(d, cx, this.my[i] ?? this.defaultY(d.id), t + this.md[i]! + delay, scroll, dir, cand[i]!);
+    }
+    const A = this.authored;
+    const tMin = t - OVERLAP_WINDOW;
+    // drop copies that can no longer collide with anything new
+    let drop = 0;
+    while (drop < this.copies.length && this.copies[drop]!.t < tMin - 4) drop++;
+    if (drop) this.copies.splice(0, drop);
+    for (let i = 0; i < n; i++) {
+      const c = cand[i]!;
+      for (let j = lowerBound(A, c.t - OVERLAP_WINDOW); j < A.length && A[j]!.t <= c.t + OVERLAP_WINDOW; j++) if (boxesOverlap(c, A[j]!)) return false;
+      for (const o of this.copies) if (boxesOverlap(c, o)) return false;
+    }
+    for (let i = 0; i < n; i++) this.copies.push({ ...cand[i]! });
+    return true;
+  }
+  private candBoxes: SpawnBox[] = [];
 
   private enqueue(p: Pending): void {
     const q = this.queue;
@@ -292,9 +443,7 @@ export class ChapterRunner implements LevelRunner {
   }
 
   private defaultY(enemy: string): number {
-    const d = enemySystem.defs[enemy];
-    const h = d ? (d.size[1] * PIXEL_SCALE) / 2 : 24;
-    return -(h + RUNNER_TUNING.spawnMargin);
+    return defaultYOf(enemy);
   }
 
   private spawn(world: WorldAPI, enemy: string, x: number, y: number | undefined, opts: EnemySpawnOpts | undefined): void {

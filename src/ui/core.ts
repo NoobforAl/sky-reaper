@@ -9,6 +9,13 @@ import { drawScanlines, Gfx, refreshBuf, type HintItem, type Widget } from "./wi
 import { applyTint, backdropChapter, drawMenuBackdrop, menuChapter, setBackdropChapter } from "./backdrop";
 import { C, resolveFont, resolveOutlineFont } from "./theme";
 import { hintMode, type HintMode } from "./desktop/store";
+import { rtl, tr } from "./i18n";
+
+/** mirror axis of the RTL UI layer: GAME_W snapped to the back-buffer grid so flipped pixel text stays crisp */
+function mirrorW(g: Gfx): number {
+  const bs = g.k.canvas.width / g.k.width() || 1;
+  return Math.round(GAME_W * bs) / bs;
+}
 
 type Dir = "up" | "down" | "left" | "right";
 
@@ -138,6 +145,8 @@ export class UiRoot {
   pointer(phase: "down" | "move" | "up" | "cancel", e: PointerEvent): void {
     const canvas = this.k.canvas as HTMLCanvasElement;
     const p = clientToGame(canvas, e.clientX, e.clientY);
+    // RTL: the UI layer is drawn mirrored, so widget hit boxes live in mirrored coordinates
+    if (this.g.mirrored) p.x = mirrorW(this.g) - p.x;
     if (phase === "down") {
       if (performance.now() < this.readyAt) return;
       if (e.button !== undefined && e.button > 0 && e.pointerType === "mouse") {
@@ -263,6 +272,8 @@ export class UiRoot {
   }
 
   nav(dir: Dir, wrap = true): void {
+    // RTL: left/right act on the mirrored layout (visual left = layout right)
+    if (this.g.mirrored && (dir === "left" || dir === "right")) dir = dir === "left" ? "right" : "left";
     const cur = this.focusId ? this.get(this.focusId) : undefined;
     if (cur && (dir === "left" || dir === "right") && cur.adjust && !cur.disabled) {
       cur.adjust(dir === "left" ? -1 : 1);
@@ -439,9 +450,18 @@ export function beginScene(
       kit.insets = safeInsets(canvas);
     }
   });
+  const flip = rtl();
+  root.g.mirrored = flip;
   k.onDraw(() => {
     refreshBuf(canvas);
     if (opts.backdrop !== false) drawMenuBackdrop(k, svc);
+    // RTL (Farsi): the whole UI layer is mirrored (columns, rows, back buttons, list order); Gfx.text flips every
+    // text box back so glyphs, numbers and key names stay readable left-to-right where they should
+    if (flip) {
+      k.pushTransform();
+      k.pushTranslate(mirrorW(root.g), 0);
+      k.pushScale(-1, 1);
+    }
     opts.drawContent?.(kit);
     root.draw();
     opts.drawOver?.(kit);
@@ -455,6 +475,7 @@ export function beginScene(
       }
     }
     root.drawTooltip();
+    if (flip) k.popTransform();
     drawScanlines(k);
     const a = 1 - kit.age() / 0.25;
     if (a > 0) k.drawRect({ pos: k.vec2(0, 0), width: GAME_W, height: GAME_H, color: k.rgb(0, 0, 0), opacity: a });
@@ -474,12 +495,12 @@ export function beginScene(
 function defaultHint(m: HintMode, root: UiRoot): HintItem[] {
   const kb = m === "kb";
   const items: HintItem[] = [
-    [kb ? ["ARROWS"] : ["D-PAD"], "MOVE"],
-    [kb ? ["ENTER"] : ["A"], "SELECT"],
+    [kb ? ["ARROWS"] : ["D-PAD"], tr("common.move")],
+    [kb ? ["ENTER"] : ["A"], tr("common.select")],
   ];
-  if (root.back) items.push([kb ? ["ESC"] : ["B"], "BACK"]);
-  if (root.nextTab) items.push([kb ? ["Q", "E"] : ["LB", "RB"], "TABS"]);
-  if (kb && WIDE) items.push([["WHEEL"], "SCROLL"]);
+  if (root.back) items.push([kb ? ["ESC"] : ["B"], tr("common.back")]);
+  if (root.nextTab) items.push([kb ? ["Q", "E"] : ["LB", "RB"], tr("common.tabs")]);
+  if (kb && WIDE) items.push([["WHEEL"], tr("common.scroll")]);
   return items;
 }
 

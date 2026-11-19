@@ -1,7 +1,7 @@
 /**
  * Progression economy check: credits earned per chapter (from playtest JSON) vs shop prices.
  * Prices are parsed from src/weapons/index.ts (UPGRADES / AIRCRAFT / SKINS / PLAYER_WEAPONS) and shopCost() is
- * re-implemented here as documented: round(baseCost * (lvl+1)^1.4).
+ * re-implemented here as documented: round(baseCost * (lvl+1)^1.25) (BALANCE_SPEC U2/U3; keep in sync with SHOP_COST_EXP in src/weapons).
  *   node tests/qa/economy.mjs [test-results/qa/play-human.json ...]
  * Writes test-results/qa/economy.json and prints a summary.
  */
@@ -28,7 +28,7 @@ const UPGRADES = rows("UPGRADES");
 const AIRCRAFT = rows("AIRCRAFT");
 const SKINS = rows("SKINS");
 const WEAPONS = rows("PLAYER_WEAPONS");
-const shopCost = (u, lvl) => (lvl >= u.maxLevel ? Infinity : Math.round(u.baseCost * Math.pow(lvl + 1, 1.4)));
+const shopCost = (u, lvl) => (lvl >= u.maxLevel ? Infinity : Math.round(u.baseCost * Math.pow(lvl + 1, 1.25)));
 
 const files = process.argv.slice(2).length ? process.argv.slice(2) : ["test-results/qa/play-human.json", "test-results/qa/play-expert.json"];
 const perChapter = {};

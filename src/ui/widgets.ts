@@ -6,6 +6,9 @@ import type { Anchor, KAPLAYCtx } from "kaplay";
 import { GAME_H, GAME_W, WIDE } from "../contracts";
 import { C, type RGB } from "./theme";
 import { smoothFramebufferMinify } from "./glfix";
+import { hasArabicScript } from "../i18n";
+import { textService } from "../i18n/text";
+import { tr } from "./i18n";
 
 // ------------------------------------------------------------------ crisp text
 
@@ -157,6 +160,10 @@ export class Gfx {
 
   /** measured width of a single-line string in game units (exact, via the font's glyph advances) */
   measure(text: string, size = 16, outlined = false): number {
+    if (hasArabicScript(text)) {
+      const fo = this.faOpts({ size, outline: outlined ? 1 : 0 });
+      return textService.measure(text, { size: fo.size, outline: fo.outline, lineHeight: fo.lineHeight }).width;
+    }
     try {
       return this.k.formatText({ text, size: readableSize(size), font: outlined ? this.fontOutline : this.font }).width;
     } catch {
@@ -166,6 +173,10 @@ export class Gfx {
 
   /** height of `text` wrapped at `width` (game units) */
   textHeight(text: string, size = 16, width?: number, lineSpacing = 0, outlined = false): number {
+    if (hasArabicScript(text)) {
+      const fo = this.faOpts({ size, outline: outlined ? 1 : 0, lineSpacing });
+      return textService.measure(text, { size: fo.size, outline: fo.outline, maxWidth: width, lineHeight: fo.lineHeight }).height;
+    }
     try {
       return this.k.formatText({ text, size: readableSize(size), font: outlined ? this.fontOutline : this.font, width, lineSpacing }).height;
     } catch {
@@ -203,20 +214,39 @@ export class Gfx {
    * outline: 0 = plain (sr_font has a baked 1px outline), 1 / -1 = sr_font_outline (outline + drop shadow),
    * >= 2 = outline font plus an extra dark 1-design-px ring (titles).
    */
+  /**
+   * RTL screens: the whole UI layer is drawn under a horizontal flip (see beginScene). Text must stay readable, so
+   * every text box is flipped back around its own centre; physical left/right alignment is swapped as well.
+   */
+  mirrored = false;
+
+  /** run `fn` un-flipped around x = cx (sprites that must not mirror, e.g. the logo) */
+  unflip(cx: number, fn: () => void): void {
+    if (!this.mirrored) return fn();
+    const k = this.k;
+    k.pushTransform();
+    k.pushTranslate(2 * cx, 0);
+    k.pushScale(-1, 1);
+    fn();
+    k.popTransform();
+  }
+
   /** draws the text; returns its height in game units (wrapped lines included) */
   text(text: string, x: number, y: number, o: TextOpts = {}): number {
+    if (hasArabicScript(text)) return this.textCanvas(text, x, y, o);
     const k = this.k;
     const size = readableSize(o.size ?? 16);
     const ow = o.outline ?? this.defaultOutline;
     const font = ow !== 0 ? this.fontOutline : this.font;
     const color = this.col(o.color ?? C.text);
     if (o.maxLines && o.width) text = this.clip(text, size, font, o.width, o.maxLines, o.lineSpacing ?? 0);
+    const align = this.mirrored && o.width ? (o.align === "center" ? "center" : o.align === "right" ? "left" : "right") : o.align;
     const ft = k.formatText({
       text,
       size,
       font,
       width: o.width,
-      align: o.align,
+      align,
       lineSpacing: o.lineSpacing,
       opacity: o.opacity ?? 1,
       color,
@@ -228,6 +258,12 @@ export class Gfx {
     const [ax, ay] = typeof an === "string" ? (ANCHOR[an] ?? [-1, -1]) : [v.x, v.y];
     const tx = snapX(x - ((ax + 1) / 2) * ft.width);
     const ty = snapY(y - ((ay + 1) / 2) * ft.height);
+    const flip = this.mirrored;
+    if (flip) {
+      k.pushTransform();
+      k.pushTranslate(2 * tx + snapX(ft.width), 0);
+      k.pushScale(-1, 1);
+    }
     if (ow >= 2) {
       const oc = this.col(o.outlineColor ?? C.dark);
       for (const ch of ft.chars) ch.color = oc;
@@ -246,7 +282,79 @@ export class Gfx {
     }
     ft.opt.pos = k.vec2(tx, ty);
     k.drawFormattedText(ft);
+    if (flip) k.popTransform();
     return ft.height;
+  }
+
+  /** text options -> TextService options (Arabic script: Canvas2D shaping + bidi, cached atlas texture) */
+  private faOpts(o: TextOpts): { size: number; outline: { width: number; color: RGB; shadow: boolean }; lineHeight: number } {
+    const ow = o.outline ?? this.defaultOutline;
+    const size = Math.max(14, Math.round(readableSize(o.size ?? 16) * 0.95));
+    const outline = ow >= 2 ? { width: 2, color: o.outlineColor ?? C.dark, shadow: true } : ow !== 0 ? { width: 1.5, color: C.dark, shadow: true } : { width: 1, color: C.dark, shadow: false };
+    // Vazirmatn needs ~1.55 em per line or tall letters (alef, lam) and descenders get clipped in the atlas
+    return { size, outline, lineHeight: 1.55 + (o.lineSpacing ?? 0) / Math.max(14, size) };
+  }
+
+  /** Arabic-script text through the shared TextService (shaping + bidi by the browser) */
+  private textCanvas(text: string, x: number, y: number, o: TextOpts): number {
+    const k = this.k;
+    const fo = this.faOpts(o);
+    const maxWidth = o.width;
+    if (o.maxLines && maxWidth) text = this.clipFa(text, fo, maxWidth, o.maxLines);
+    // physical alignment inside the box; RTL screens (mirrored) right-align paragraphs by default
+    const want = o.align ?? (this.mirrored ? "right" : "left");
+    const align = this.mirrored && o.align ? (want === "center" ? "center" : want === "left" ? "right" : "left") : want;
+    const m = textService.measure(text, { size: fo.size, outline: fo.outline, maxWidth, lineHeight: fo.lineHeight });
+    const an = o.anchor ?? "topleft";
+    const v = an as unknown as { x: number; y: number };
+    const [ax, ay] = typeof an === "string" ? (ANCHOR[an] ?? [-1, -1]) : [v.x, v.y];
+    const w = snapX(m.width);
+    const tx = snapX(x - ((ax + 1) / 2) * m.width);
+    // top / bottom anchors: line up the first (last) line's centre with where the pixel font's glyphs would sit, so a
+    // Farsi label replaces an English one in place even though its line box is taller
+    const slack = Math.max(0, (m.height / Math.max(1, m.lines) - readableSize(o.size ?? 16)) / 2);
+    const ty = snapY(y - ((ay + 1) / 2) * m.height + (ay < 0 ? -slack : ay > 0 ? slack : 0));
+    const flip = this.mirrored;
+    if (flip) {
+      k.pushTransform();
+      k.pushTranslate(2 * tx + w, 0);
+      k.pushScale(-1, 1);
+    }
+    textService.drawText(k, text, {
+      pos: [tx, ty],
+      size: fo.size,
+      color: o.color ?? C.text,
+      outline: fo.outline,
+      maxWidth,
+      align,
+      opacity: o.opacity ?? 1,
+      lineHeight: fo.lineHeight,
+    });
+    if (flip) k.popTransform();
+    return m.height;
+  }
+
+  /** Arabic-script counterpart of clip(): longest word prefix + "…" that wraps to <= maxLines; cached */
+  private clipFa(text: string, fo: ReturnType<Gfx["faOpts"]>, width: number, maxLines: number): string {
+    const key = `fa|${fo.size}|${width}|${maxLines}|${text}`;
+    const hit = clipCache.get(key);
+    if (hit !== undefined) return hit;
+    const lines = (t: string) => textService.measure(t, { size: fo.size, outline: fo.outline, maxWidth: width, lineHeight: fo.lineHeight }).lines;
+    let out = text;
+    if (lines(text) > maxLines) {
+      const words = text.split(" ");
+      let lo = 0;
+      let hi = words.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (lines(words.slice(0, mid).join(" ") + "…") <= maxLines) lo = mid;
+        else hi = mid - 1;
+      }
+      out = (lo > 0 ? words.slice(0, lo).join(" ") : words[0]!) + "…";
+    }
+    if (clipCache.size > 600) clipCache.clear();
+    clipCache.set(key, out);
+    return out;
   }
 
   rect(x: number, y: number, w: number, h: number, color: RGB, opacity = 1, radius = 0): void {
@@ -335,7 +443,9 @@ export class Gfx {
     const ph = readableSize(size) + 14;
     this.rect(x - 8, y - ph / 2, total + 16, ph, C.dark, 0.6 * op, 3);
     items.forEach(([caps, label], i) => {
-      for (const c of caps) x += this.keycap(c, x, y, { size, opacity: op }) + 4;
+      // key sequences (W A S D, Q E R) keep their left-to-right order on the mirrored RTL layer
+      if (this.mirrored) for (let j = caps.length - 1; j >= 0; j--) x += this.keycap(caps[j]!, x, y, { size, opacity: op }) + 4;
+      else for (const c of caps) x += this.keycap(c, x, y, { size, opacity: op }) + 4;
       this.text(label, x + 4, y, { size, color: C.text, anchor: "left", opacity: op, outline: 1 });
       x += this.measure(label, size, true) + 8 + (i < items.length - 1 ? 18 : 0);
     });
@@ -347,26 +457,26 @@ export class Gfx {
     if (!lines.length) return;
     const size = 11;
     const rs = readableSize(size);
-    const lh = rs + 6;
-    const cw = rs * CHAR_W;
+    const fa = lines.some(hasArabicScript);
+    const lh = fa ? Math.max(rs, 14) * 1.3 + 4 : rs + 6;
     const maxW = Math.min(GAME_W - 40, Math.max(300, rs * 30));
-    const perLine = Math.floor(maxW / cw);
-    // word wrap to ~300 units
+    // word wrap by measured width (works for the bitmap font and for Farsi canvas text)
     const wrapped: string[] = [];
     for (const l of lines) {
       let cur = "";
       for (const word of l.split(" ")) {
-        if (cur && (cur + " " + word).length > perLine) {
+        const cand = cur ? cur + " " + word : word;
+        if (cur && this.measure(cand, size) > maxW - 24) {
           wrapped.push(cur);
           cur = word;
-        } else cur = cur ? cur + " " + word : word;
+        } else cur = cand;
       }
       wrapped.push(cur);
     }
     const titleN = 1;
     lines = wrapped;
-    const maxLen = Math.max(...lines.map((l) => l.length));
-    const w = Math.min(GAME_W - 16, Math.max(120, maxLen * cw + 24));
+    const maxLen = Math.max(...lines.map((l) => this.measure(l, size)));
+    const w = Math.min(GAME_W - 16, Math.max(120, maxLen + 24));
     const h = lines.length * lh + 14;
     let tx = x + 14;
     let ty = y + 18;
@@ -629,9 +739,11 @@ export function button(o: ButtonOpts): Widget {
       const col = w.disabled ? C.grey : s.focus || s.hover ? C.white : C.text;
       const left = o.align === "left";
       const tx = left ? w.x + 16 : w.x + w.w / 2;
-      const ty = sub ? w.y + w.h / 2 - 8 : w.y + w.h / 2;
+      // Farsi glyphs are taller than the pixel font: label + sub line get more room (centres at ~31% / ~74%)
+      const fa = !!sub && (hasArabicScript(label) || hasArabicScript(sub));
+      const ty = sub ? (fa ? w.y + w.h * 0.31 : w.y + w.h / 2 - 8) : w.y + w.h / 2;
       g.text(label, tx, ty + (s.pressed ? 1 : 0), { size, color: col, anchor: left ? "left" : "center", outline: -1 });
-      if (sub) g.text(sub, tx, ty + size * 0.5 + 6, { size: 11, color: w.disabled ? C.grey : acc, anchor: left ? "left" : "center" });
+      if (sub) g.text(sub, tx, fa ? w.y + w.h * 0.74 : ty + size * 0.5 + 6, { size: 11, color: w.disabled ? C.grey : acc, anchor: left ? "left" : "center" });
       o.deco?.(g, s, w);
       const cap = o.cap?.();
       if (cap) g.keycap(cap, w.x + w.w - 8, w.y, { anchor: "right", size: 9, color: s.focus || s.hover ? acc : C.steelHi });
@@ -721,7 +833,9 @@ export function toggle(o: ToggleOpts): Widget {
       g.rect(sx, sy, sw, 24, on ? C.amberDim : C.dark, 1, 12);
       g.frame(sx, sy, sw, 24, on ? acc : C.steel, 1, 1, 12);
       g.circle(on ? sx + sw - 12 : sx + 12, sy + 12, 9, on ? C.white : C.steel);
-      g.text(on ? "ON" : "OFF", on ? sx + 20 : sx + sw - 20, sy + 12, { size: 10, color: on ? C.white : C.grey, anchor: "center" });
+      const st = tr(on ? "common.on" : "common.off");
+      // the knob side + colour already say it: skip the word when a translation does not fit beside the knob
+      if (g.measure(st, 10) <= sw - 26) g.text(st, on ? sx + 20 : sx + sw - 20, sy + 12, { size: 10, color: on ? C.white : C.grey, anchor: "center" });
     },
     activate() {
       o.set(!o.get());

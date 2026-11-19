@@ -86,6 +86,10 @@ export interface Settings {
   showFps: boolean;
   touchControls: "auto" | "on" | "off";
   bindings: Bindings;
+  /** round 5: floating "+150" score popups on kills (optional for old saves; treat undefined as true) */
+  scorePopups?: boolean;
+  /** round 5: UI language (optional for old saves; treat undefined as "en") */
+  language?: "en" | "fa";
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -99,6 +103,8 @@ export const DEFAULT_SETTINGS: Settings = {
   showFps: false,
   touchControls: "auto",
   bindings: DEFAULT_BINDINGS,
+  scorePopups: true,
+  language: "en",
 };
 
 export type UpgradeId = "damage" | "fireRate" | "hull" | "shield" | "bombs" | "speed" | "flares";
@@ -199,6 +205,9 @@ export interface HudData {
   incomingMissiles: Array<{ id: number; x: number; y: number; locked: boolean }>;
   banner: { text: string; subtext?: string; alpha: number } | null;
   fps: number;
+  /** round 5: THREAT rank 0..3 (BALANCE_SPEC §7) and progress 0..1 toward the next level; HUD hides at 0 */
+  threat?: number;
+  threatProgress?: number;
 }
 
 export interface HudRenderer {

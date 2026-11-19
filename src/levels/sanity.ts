@@ -4,12 +4,17 @@
  * Checks: monotonic t, known enemy ids / pickups / tutorial steps / boss ids, formation slots on or near the screen,
  * boss event last within 170-240 s, weather intensity range, objective stat keys, ascending medals,
  * and estimates the max kill score per chapter (to tune medal thresholds).
+ * Round 5 (#7): `checkOverlaps(script)` lists authored units of the same layer that start overlapped on the live
+ * field (see spacing.ts); `checkLevels()` reports the count per chapter.
  */
 import { DESIGN_W, PICKUP_KINDS, type ChapterDef } from "../contracts";
 import { enemySystem } from "../enemies";
 import { bosses, BOSS_PART_DEFS } from "../bosses";
 import { formationSlot } from "./builders";
 import { CHAPTER_SCRIPTS } from "./index";
+import { authoredBoxes } from "./runner";
+import { boxesOverlap, OVERLAP_WINDOW } from "./spacing";
+import type { ChapterScript } from "./types";
 import { TUTORIAL_HINTS } from "./tutorial";
 
 const STAT_KEYS = ["score", "kills", "airKills", "groundKills", "damageTaken", "deaths", "coins", "bombsUsed", "flaresUsed", "timeSec", "bossDefeated", "killRate", "spawned"];
@@ -23,6 +28,7 @@ export interface ChapterReport {
   bossAt: number;
   maxKillScore: number;
   bossPartScore: number;
+  overlaps: number;
   errors: string[];
   warnings: string[];
 }
@@ -97,11 +103,31 @@ export function checkChapter(def: ChapterDef): ChapterReport {
   for (let i = 1; i < m.length; i++) if (m[i]! <= m[i - 1]!) errors.push("medal thresholds not ascending");
   let bossPartScore = 0;
   for (const id in BOSS_PART_DEFS) if (id.startsWith(`boss_${def.boss}_`)) bossPartScore += BOSS_PART_DEFS[id]!.score;
-  return { id: def.id, events: def.events.length, spawns, airSpawns: air, groundSpawns: ground, bossAt, maxKillScore: score, bossPartScore, errors, warnings };
+  return { id: def.id, events: def.events.length, spawns, airSpawns: air, groundSpawns: ground, bossAt, maxKillScore: score, bossPartScore, overlaps: 0, errors, warnings };
+}
+
+/** authored units (same layer) that start overlapped on the live field: "t=.. a[i] x t=.. b[j]" */
+export function checkOverlaps(script: ChapterScript): string[] {
+  const boxes = authoredBoxes(script);
+  const out: string[] = [];
+  for (let i = 0; i < boxes.length; i++) {
+    const a = boxes[i]!;
+    for (let j = i + 1; j < boxes.length && boxes[j]!.t - a.t <= OVERLAP_WINDOW; j++) {
+      const b = boxes[j]!;
+      if (boxesOverlap(a, b)) out.push(`${a.tag} @(${Math.round(a.x)},${Math.round(a.y)}) x ${b.tag} @(${Math.round(b.x)},${Math.round(b.y)})`);
+    }
+  }
+  return out;
 }
 
 export function checkLevels(): ChapterReport[] {
-  const out = CHAPTER_SCRIPTS.map((s) => checkChapter(s.def));
+  const out = CHAPTER_SCRIPTS.map((s) => {
+    const r = checkChapter(s.def);
+    const ov = checkOverlaps(s);
+    r.overlaps = ov.length;
+    for (const o of ov) r.warnings.push(`overlap ${o}`);
+    return r;
+  });
   if (typeof console !== "undefined") console.table(out.map((r) => ({ ...r, errors: r.errors.length, warnings: r.warnings.length })));
   return out;
 }

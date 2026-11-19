@@ -6,8 +6,9 @@ import { rememberChapter } from "./backdrop";
 import { beginScene } from "./core";
 import { chapterInfo } from "./data";
 import { cols, WIDE } from "./layout";
-import { C, esc, fmtNum, fmtTime, MEDAL_COLORS, MEDAL_NAMES } from "./theme";
+import { C, esc, fmtNum, fmtTime, MEDAL_COLORS } from "./theme";
 import { button, type HintItem, type Widget } from "./widgets";
+import { medalName, objectiveText, tr } from "./i18n";
 
 const ENGINE_DEFAULT_NAME = "PILOT";
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -104,24 +105,24 @@ export function registerResults(svc: Services): void {
           : initialsState === "entry"
             ? m === "kb"
               ? [
-                  [["A-Z"], "TYPE"],
-                  [["ARROWS"], "PICK"],
-                  [["ENTER"], "SAVE"],
+                  [["A-Z"], tr("common.type")],
+                  [["ARROWS"], tr("common.pick")],
+                  [["ENTER"], tr("common.save")],
                 ]
               : [
-                  [["D-PAD"], "PICK"],
-                  [["A"], "NEXT"],
+                  [["D-PAD"], tr("common.pick")],
+                  [["A"], tr("common.next")],
                 ]
             : m === "kb"
               ? [
-                  [["ARROWS"], "MOVE"],
-                  [["ENTER"], "SELECT"],
-                  [["ESC"], "MENU"],
+                  [["ARROWS"], tr("common.move")],
+                  [["ENTER"], tr("common.select")],
+                  [["ESC"], tr("common.menu")],
                 ]
               : [
-                  [["D-PAD"], "MOVE"],
-                  [["A"], "SELECT"],
-                  [["B"], "MENU"],
+                  [["D-PAD"], tr("common.move")],
+                  [["A"], tr("common.select")],
+                  [["B"], tr("common.menu")],
                 ],
       drawContent: (kk) => {
         const { g } = kk;
@@ -130,42 +131,46 @@ export function registerResults(svc: Services): void {
         // title
         const drop = Math.max(0, 1 - age / 0.35);
         const titleCol = P.victory ? C.amber : C.red;
-        g.text(P.victory ? "MISSION COMPLETE" : "MISSION FAILED", GAME_W / 2, top + 24 - drop * 40, {
+        g.text(P.victory ? tr("results.complete") : tr("results.failed"), GAME_W / 2, top + 24 - drop * 40, {
           size: WIDE ? 38 : 30,
           color: titleCol,
           anchor: "center",
           outline: 2,
           opacity: 1 - drop,
         });
-        g.text(`CH ${idx + 1}  ${esc(ch.name)}`, GAME_W / 2, top + (WIDE ? 64 : 58), { size: WIDE ? 14 : 12, color: C.cyan, anchor: "center" });
+        g.text(tr("results.chapterLine", { n: idx + 1, name: esc(ch.name) }), GAME_W / 2, top + (WIDE ? 64 : 58), { size: WIDE ? 14 : 12, color: C.cyan, anchor: "center" });
 
         // stats panel
         const px = L.x;
         const py = G.statsY;
         const pw = L.w;
-        g.panel(px, py, pw, G.statsH, { title: "DEBRIEF" });
+        g.panel(px, py, pw, G.statsH, { title: tr("results.debrief") });
         const sf = Math.max(0, Math.min(1, (age - T_SCORE[0]!) / (T_SCORE[1]! - T_SCORE[0]!)));
         const score = Math.floor(S.score * (1 - Math.pow(1 - sf, 3)));
-        g.text("SCORE", px + 18, py + 22, { size: 12, color: C.grey });
+        g.text(tr("results.score"), px + 18, py + 22, { size: 12, color: C.grey });
         g.text(fmtNum(score), px + 18, py + 38, { size: WIDE ? 36 : 30, color: C.white, outline: -1 });
         if (P.newBest && age > T_SCORE[1]!) {
           const pulse = 0.6 + 0.4 * Math.sin(k.time() * 8);
-          g.text("NEW BEST!", px + 18, py + 76, { size: 13, color: C.amber, opacity: pulse });
+          g.text(tr("results.newBest"), px + 18, py + 76, { size: 13, color: C.amber, opacity: pulse });
         }
         const rows: Array<[string, string]> = [
-          ["KILLS", WIDE ? `${S.kills}  (AIR ${S.airKills} / GND ${S.groundKills})` : `${S.kills}`],
-          ["KILL RATE", `${Math.round((S.killRate || 0) * 100)}%`],
-          ["TIME", fmtTime(S.timeSec)],
-          ["DAMAGE TAKEN", `${Math.round(S.damageTaken)}`],
-          ["DEATHS", `${S.deaths}`],
-          [WIDE ? "BOMBS / FLARES" : "BOMBS/FLARES", `${S.bombsUsed} / ${S.flaresUsed}`],
+          [tr("results.kills"), WIDE ? tr("results.killsDetail", { kills: S.kills, air: S.airKills, ground: S.groundKills }) : `${S.kills}`],
+          [tr("results.killRate"), `${Math.round((S.killRate || 0) * 100)}%`],
+          [tr("results.time"), fmtTime(S.timeSec)],
+          [tr("results.damageTaken"), `${Math.round(S.damageTaken)}`],
+          [tr("results.deaths"), `${S.deaths}`],
+          [WIDE ? tr("results.bombsFlares") : tr("results.bombsFlaresShort"), `${S.bombsUsed} / ${S.flaresUsed}`],
         ];
+        // round 5: highest THREAT rank reached this run (RunStats.threatMax, 0..3)
+        const tm = (S as { threatMax?: number }).threatMax;
+        if (typeof tm === "number" && Number.isFinite(tm)) rows.push([tr("results.maxThreat"), `${Math.max(0, Math.min(3, Math.round(tm)))} / 3`]);
+        const statStep = !WIDE && rows.length > 6 ? 18 : G.statStep;
         // value column right of the widest label (font sizes are snapped per screen, so measure)
         const vx = px + 18 + Math.max(...rows.map(([a]) => g.measure(a, WIDE ? 13 : 11))) + 16;
         rows.forEach(([a, b], i) => {
           const ra = Math.max(0, Math.min(1, (age - 0.3 - i * 0.1) / 0.2));
           if (ra <= 0) return;
-          const ry = py + 100 + i * G.statStep;
+          const ry = py + 100 + i * statStep;
           g.text(a, px + 18, ry, { size: WIDE ? 13 : 11, color: C.grey, opacity: ra });
           g.text(b, vx, ry, { size: WIDE ? 14 : 12, color: C.white, opacity: ra });
         });
@@ -186,16 +191,16 @@ export function registerResults(svc: Services): void {
             g.line(mx, my, mx + Math.cos(a) * 62 * pop, my + Math.sin(a) * 62 * pop, MEDAL_COLORS[P.medal]!, 2, 0.25);
           }
           g.medal(mx, my, 34 * pop, P.medal, svc.sprites, shine < 1 ? shine : 0);
-          g.text(MEDAL_NAMES[P.medal]!, mx, my + 54, { size: 14, color: MEDAL_COLORS[P.medal]!, anchor: "center", outline: -1 });
+          g.text(medalName(P.medal), mx, my + 54, { size: 14, color: MEDAL_COLORS[P.medal]!, anchor: "center", outline: -1 });
         } else if (P.medal === 0 && age >= T_MEDAL) {
           g.ring(mx, my, 32, C.steel, 2, 0.6);
-          g.text("NO MEDAL", mx, my + 54, { size: 11, color: C.grey, anchor: "center" });
+          g.text(tr("medal.none"), mx, my + 54, { size: 11, color: C.grey, anchor: "center" });
         }
 
         // objectives
         const oy = G.objY;
-        g.panel(px, oy, pw, G.objH, { title: "OBJECTIVES", accent: C.cyan });
-        if (!P.objectives.length) g.text(P.victory ? "Chapter cleared." : "Objectives void - mission failed.", px + 18, oy + 24, { size: 12, color: C.grey });
+        g.panel(px, oy, pw, G.objH, { title: tr("results.objectives"), accent: C.cyan });
+        if (!P.objectives.length) g.text(P.victory ? tr("results.chapterCleared") : tr("results.objectivesVoid"), px + 18, oy + 24, { size: 12, color: C.grey, width: pw - 36 });
         P.objectives.slice(0, 3).forEach((o, i) => {
           const ra = Math.max(0, Math.min(1, (age - 0.9 - i * 0.15) / 0.2));
           if (ra <= 0) return;
@@ -203,7 +208,7 @@ export function registerResults(svc: Services): void {
           g.frame(px + 18, ry, 18, 18, o.done ? C.green : C.steel, 2, ra);
           if (o.done) g.check(px + 27, ry + 9, 14, C.green);
           else g.cross(px + 27, ry + 9, 12, C.red);
-          g.text(esc(o.def.text), px + 46, ry + 2, { size: WIDE ? 14 : 12, color: o.done ? C.green : C.grey, width: pw - 140, opacity: ra });
+          g.text(esc(objectiveText(o.def)), px + 46, ry + 2, { size: WIDE ? 14 : 12, color: o.done ? C.green : C.grey, width: pw - 140, opacity: ra, maxLines: 1 });
           g.text(o.done ? `+${o.def.reward}` : "-", px + pw - 18, ry + 2, { size: WIDE ? 14 : 12, color: o.done ? C.amber : C.grey, anchor: "topright", opacity: ra });
         });
 
@@ -221,26 +226,31 @@ export function registerResults(svc: Services): void {
         const ch2 = WIDE ? 64 : 42;
         g.rect(rx, cy, rw, ch2, C.navy, 0.9, 3);
         g.frame(rx, cy, rw, ch2, C.amberDim, 1, 1, 3);
-        g.text("CREDITS EARNED", rx + 16, cy + ch2 / 2, { size: 12, color: C.grey, anchor: "left" });
-        g.text(`+${fmtNum(shown)}`, rx + rw / 2 + 40, cy + ch2 / 2, { size: WIDE ? 28 : 20, color: C.amber, anchor: "center" });
-        g.text(`TOTAL ${fmtNum(save.data.credits - P.creditsEarned + shown)}`, rx + rw - 16, cy + ch2 / 2, { size: 11, color: C.text, anchor: "right" });
+        const earnedLbl = tr("results.creditsEarned");
+        g.text(earnedLbl, rx + 16, cy + ch2 / 2, { size: 12, color: C.grey, anchor: "left" });
+        const totalLbl = tr("results.total", { n: fmtNum(save.data.credits - P.creditsEarned + shown) });
+        // the count-up sits in the gap between the two labels (Farsi labels are wider than the English ones)
+        const gl = rx + 16 + g.measure(earnedLbl, 12) + 8;
+        const gr = rx + rw - 16 - g.measure(totalLbl, 11) - 8;
+        g.text(`+${fmtNum(shown)}`, Math.max(gl + 40, Math.min(rx + rw / 2 + 40, (gl + gr) / 2)), cy + ch2 / 2, { size: WIDE ? 28 : 20, color: C.amber, anchor: "center" });
+        g.text(totalLbl, rx + rw - 16, cy + ch2 / 2, { size: 11, color: C.text, anchor: "right" });
 
         // initials / ranking
         const iy = G.initY;
         if (initialsState === "entry" && age >= T_DONE) {
-          g.panel(rx, iy, rw, G.initH, { title: "NEW HIGH SCORE", accent: C.amber });
+          g.panel(rx, iy, rw, G.initH, { title: tr("results.newHighScore"), accent: C.amber });
           const m = kk.mode();
-          g.text(m === "kb" ? "TYPE YOUR INITIALS - ENTER TO SAVE" : m === "pad" ? "D-PAD PICK LETTERS - A NEXT" : "ENTER YOUR INITIALS", rx + rw / 2, iy + 22, {
+          g.text(m === "kb" ? tr("results.typeInitials") : m === "pad" ? tr("results.padInitials") : tr("results.enterInitials"), rx + rw / 2, iy + 22, {
             size: 12,
             color: C.text,
             anchor: "center",
           });
-          if (WIDE && rank > 0) g.text(`RANK #${rank}`, rx + rw / 2, iy + G.initH - 30, { size: 14, color: C.amber, anchor: "center" });
+          if (WIDE && rank > 0) g.text(tr("results.rank", { n: rank }), rx + rw / 2, iy + G.initH - 30, { size: 14, color: C.amber, anchor: "center" });
         } else if (age >= T_DONE) {
-          g.panel(rx, iy, rw, G.initH, { title: "TOP PILOTS", accent: C.cyan });
+          g.panel(rx, iy, rw, G.initH, { title: tr("common.topPilots"), accent: C.cyan });
           const list = save.data.highScores.slice(0, G.pilots);
           const step = WIDE ? 34 : 28;
-          if (!list.length) g.text("No records yet.", rx + 18, iy + 26, { size: 12, color: C.grey });
+          if (!list.length) g.text(tr("common.noRecords"), rx + 18, iy + 26, { size: 12, color: C.grey });
           list.forEach((e, i) => {
             const ry = iy + (WIDE ? 26 : 20) + i * step;
             const mine = rank === i + 1;
@@ -249,15 +259,15 @@ export function registerResults(svc: Services): void {
             g.text(`${i + 1}.`, rx + 18, ry, { size: 13, color: C.grey });
             g.text(esc(e.name), rx + 56, ry, { size: 14, color: col });
             const ci = CHAPTER_IDS.indexOf(e.chapter as ChapterId);
-            g.text(ci >= 0 ? `CH${ci + 1}` : "", rx + 180, ry, { size: 11, color: C.grey });
+            g.text(ci >= 0 ? tr("common.chapterShort", { n: ci + 1 }) : "", rx + 180, ry, { size: 11, color: C.grey });
             g.text(fmtNum(e.score), rx + rw - 18, ry, { size: 14, color: col, anchor: "topright" });
           });
-          if (rank > G.pilots) g.text(`YOUR RANK #${rank}`, rx + rw - 14, iy, { size: 11, color: C.amber, anchor: "right" });
+          if (rank > G.pilots) g.text(tr("results.yourRank", { n: rank }), rx + rw - 14, iy, { size: 11, color: C.amber, anchor: "right" });
         }
         if (age < T_DONE) {
           const blink = Math.sin(k.time() * 5) > 0;
           const m = kk.mode();
-          const skip = m === "touch" ? "TAP TO SKIP" : m === "pad" ? "PRESS A TO SKIP" : "CLICK OR PRESS ANY KEY TO SKIP";
+          const skip = m === "touch" ? tr("results.tapSkip") : m === "pad" ? tr("results.padSkip") : tr("results.keySkip");
           if (blink) g.text(skip, GAME_W / 2, WIDE ? G.btnY + 30 : GAME_H - 60, { size: WIDE ? 13 : 11, color: C.grey, anchor: "center" });
         }
       },
@@ -328,8 +338,10 @@ export function registerResults(svc: Services): void {
       if (initialsState === "entry") {
         const iy = G.initY + (WIDE ? 90 : 0);
         const sx0 = R.x + R.w / 2 - 96;
+        // initials are Latin and read left to right: on the mirrored RTL layer the slots are laid out reversed
+        const flipSlots = kit.root.g.mirrored;
         for (let s = 0; s < 3; s++) {
-          const x = sx0 + s * 64;
+          const x = sx0 + (flipSlots ? 2 - s : s) * 64;
           ws.push(
             button({ id: `up${s}`, x, y: iy + 40, w: 56, h: 30, label: "+", size: 16, sfx: false, accent: C.cyan, onClick: () => ((slot = s), changeLetter(s, 1)) }),
             {
@@ -353,7 +365,7 @@ export function registerResults(svc: Services): void {
             button({ id: `dn${s}`, x, y: iy + 126, w: 56, h: 30, label: "-", size: 16, sfx: false, accent: C.cyan, onClick: () => ((slot = s), changeLetter(s, -1)) }),
           );
         }
-        ws.push(button({ id: "ok", x: sx0 + 3 * 64 + 4, y: iy + 74, w: 72, h: 48, label: "OK", size: 18, onClick: commitInitials }));
+        ws.push(button({ id: "ok", x: flipSlots ? sx0 - 80 : sx0 + 3 * 64 + 4, y: iy + 74, w: 72, h: 48, label: tr("common.ok"), size: 18, onClick: commitInitials }));
         root.capture = (name) => {
           if (/^[a-z0-9]$/.test(name)) {
             letters[slot] = Math.max(0, ALPHABET.indexOf(name.toUpperCase()));
@@ -393,12 +405,12 @@ export function registerResults(svc: Services): void {
       const sz = WIDE ? 20 : 17;
       const cap = (kb: string) => (WIDE ? kit.cap(kb) : undefined);
       ws.push(
-        button({ id: "retry", ...at(0), label: "RETRY", size: sz, onClick: () => go(SCENES.game, { chapterId: P.chapterId }), cap: cap("R") }),
+        button({ id: "retry", ...at(0), label: tr("results.retry"), size: sz, onClick: () => go(SCENES.game, { chapterId: P.chapterId }), cap: cap("R") }),
         canNext
-          ? button({ id: "next", ...at(1), label: "NEXT", sub: `CHAPTER ${idx + 2}`, size: sz, onClick: () => go(SCENES.game, { chapterId: nextId! }), cap: cap("N") })
-          : button({ id: "chapters", ...at(1), label: "CHAPTERS", size: sz, accent: C.cyan, onClick: () => go(SCENES.chapters), cap: cap("C") }),
-        button({ id: "hangar", ...at(2), label: "HANGAR", size: sz, accent: C.cyan, onClick: () => go(SCENES.shop), cap: cap("H") }),
-        button({ id: "menu", ...at(3), label: "MENU", size: sz, accent: C.cyan, onClick: () => go(SCENES.menu), cap: kit.cap("ESC", "B") }),
+          ? button({ id: "next", ...at(1), label: tr("common.next"), sub: tr("common.chapterN", { n: idx + 2 }), size: sz, onClick: () => go(SCENES.game, { chapterId: nextId! }), cap: cap("N") })
+          : button({ id: "chapters", ...at(1), label: tr("results.chapters"), size: sz, accent: C.cyan, onClick: () => go(SCENES.chapters), cap: cap("C") }),
+        button({ id: "hangar", ...at(2), label: tr("results.hangar"), size: sz, accent: C.cyan, onClick: () => go(SCENES.shop), cap: cap("H") }),
+        button({ id: "menu", ...at(3), label: tr("common.menu"), size: sz, accent: C.cyan, onClick: () => go(SCENES.menu), cap: kit.cap("ESC", "B") }),
       );
       root.back = () => go(SCENES.menu);
       root.shortcuts = { r: "retry", n: "next", c: "chapters", h: "hangar" };

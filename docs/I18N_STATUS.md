@@ -3,15 +3,16 @@
 Owner: i18n agent. Plan: `docs/I18N_FARSI_PLAN.md`. **Phases 1–2 are done as a self-contained module. Nothing in the
 game uses it yet**: no screen, contract or loader imports `src/i18n`.
 
-> **RELEASE GATE: a native Farsi speaker must review `src/i18n/locales/fa.ts` before release.** The current Farsi is a
-> machine draft, and so is the glossary below.
+> **RELEASE GATE: a native Farsi speaker must review `src/i18n/locales/fa.ts` before release.** Round 5 rewrote it to
+> `docs/FA_STYLE_GUIDE.md` (short, modern, game-like) and it passes `node tests/i18n/check.mjs`, but it is still not
+> native-reviewed. Lines marked `// REVIEW: native speaker` are the least certain (2 left).
 
 ## 1. What exists
 
 | File | Contents |
 |---|---|
 | `src/i18n/index.ts` | `t(key, params?, locale?)`, `setLocale`, `getLocale`, `onLocaleChange`, `isRtl`, `detectLocale` (`navigator.language` `fa*` → `"fa"`), `resolveLocale("auto"\|"en"\|"fa")`, `setPersianDigits` / `usesPersianDigits`, `formatNumber(n, {persianDigits, grouping, decimals})` (Intl `fa-IR`: `۱۲٬۳۴۵`, `٫` decimal; manual fallback), `toPersianDigits`, `toAsciiDigits`, `hasArabicScript`, `STRING_KEYS` |
-| `src/i18n/locales/en.ts` | 410 keys (`menu.*`, `chapters.*`, `chapter.<id>.name/subtitle/briefing`, `objective.<id>`, `boss.<id>`, `tutorial.<step>.key/touch`, `hud.*`, `banner.*`, `touch.*`, `pause.*`, `results.*`, `settings.*`, `shop.*`, `weapon.<id>.name/desc`, `upgrade.<id>.*`, `aircraft.<id>.*`, `skin.<id>.*`, `medal.0-4`). Exports `StringKey` and `StringTable` |
+| `src/i18n/locales/en.ts` | 501 keys (`menu.*`, `chapters.*`, `chapter.<id>.name/subtitle/briefing`, `objective.<id>`, `boss.<id>`, `tutorial.<step>.key/touch`, `hud.*`, `banner.*`, `touch.*`, `pause.*`, `results.*`, `settings.*`, `shop.*`, `weapon.<id>.name/desc`, `upgrade.<id>.*`, `aircraft.<id>.*`, `skin.<id>.*`, `medal.0-4`; round 5: `bossBanner.*`, `wave.<chapter>.*`, `banner.operation/chapterIntro/wave`, `chapter.<id>.opName`). Exports `StringKey` and `StringTable` |
 | `src/i18n/locales/fa.ts` | Draft translation typed as `StringTable`. A missing or extra key is a type error |
 | `src/i18n/text.ts` | `TextService` (`textService` singleton, `createTextService(opts)`): `drawText`, `drawNumber`, `measure`, `overflows`, `onOverflow`, `init(k)`, `ready()`, `clear()`, `stats()`, `usesCanvas()`, `baseRtl()` |
 | `src/i18n/font.ts` | `loadPersianFont(baseUrl?)` registers Vazirmatn 400 and 700 with `FontFace`, then calls `document.fonts.load`. Also `persianFontReady()` and `FA_FONT_STACK` |
@@ -105,42 +106,15 @@ Native review of `fa.ts` and of the glossary below. Buttons should be 12 charact
 - Check that FPS stays within 5 % of English.
 - Add credits (§4).
 
-## 3. Glossary (draft: native review required)
+## 3. Glossary
 
-| English | Farsi | Note |
-|---|---|---|
-| sortie | سورتی | Air-force usage |
-| ordnance (air-to-ground stock) | مهمات | |
-| flare | فلر | Loanword used by pilots; alternative: منور |
-| bomb / heavy bomb | بمب / بمب سنگین | |
-| rocket / missile | راکت / موشک | Keep them distinct |
-| guns (air-to-air) | مسلسل | |
-| homing / seeker | ردیاب / جستجوگر | |
-| spread / vulcan / laser | پخشی / ولکان / لیزر | |
-| hull / shield / armor | بدنه / سپر / زره | |
-| AA (anti-aircraft) | ضدهوایی / پدافند هوایی | |
-| credits (CR) | اعتبار | The CR abbreviation is not used in Farsi |
-| hangar | آشیانه | |
-| chapter / operation / campaign | فصل / عملیات / لشکرکشی | |
-| briefing / debrief | توجیه عملیات / گزارش مأموریت | |
-| objectives | اهداف | |
-| boss | سرکرده | Only used generically; bosses use their names |
-| medal: bronze / silver / gold / ace | برنز / نقره / طلا / آس | |
-| score / lives / kills | امتیاز / جان / انهدام | |
-| mission complete / failed | مأموریت انجام شد / مأموریت ناکام ماند | |
-| pilot | خلبان | |
-| paint scheme / skin | طرح رنگ / طرح | |
-| FALCON / RAPTOR / BULWARK | شاهین / شکاری / سنگر | |
-| PACIFIC / JUNGLE / DESERT / ARCTIC / CITADEL | اقیانوس آرام / جنگل / صحرا / قطب شمال / ارگ | |
-| Tidebreak / Green Hell / Dust Devil / White Fang / Last Light | موج‌شکن / جهنم سبز / گردباد / نیش سفید / آخرین نور | |
-| CARRIER LEVIATHAN | ناو هواپیمابر لویاتان | |
-| GUNSHIP HORNET KING | بالگرد توپدار شاه‌زنبور | |
-| LAND FORTRESS SAND TYRANT | دژ زمینی جبار شن | |
-| ICE DREADNOUGHT WINTER'S MAW | رزمناو یخی کام زمستان | |
-| CITADEL CORE | هسته‌ی ارگ | |
-| game title SKY REAPER | داس آسمان (`menu.title.line1/2`) | Decide whether the logo stays Latin |
+The glossary now lives in `docs/FA_STYLE_GUIDE.md` (core terms + the "Names and recurring terms" table). The old draft
+glossary that stood here was replaced in round 5: credits are «سکه» (not «اعتبار»), flare is «منور» (not «فلر»), boss
+is «غول آخر», back is «برگشت», high score / best score is «رکورد», campaign is «کمپین», briefing is «شرح مأموریت»,
+sortie is «پرواز», the logo stays Latin **SKY REAPER** with `menu.subtitle` «جنگنده‌ی آسمان».
 
-Things that stay Latin: key and button names (SPACE, Q/E, ESC, ENTER, D-PAD, LB/RB, A/B), "FPS", "MIT", file names, player initials.
+Things that stay Latin: key and button names (SPACE, Q/E, ESC, ENTER, SHIFT, D-PAD, LB/RB, A/B), "FPS", "MIT", file
+names, player initials, `x{n}` multipliers, `+{n}` / `-{n}` signs.
 
 ## 4. Font and credits
 
@@ -156,44 +130,65 @@ Things that stay Latin: key and button names (SPACE, Q/E, ESC, ENTER, D-PAD, LB/
 - Objective texts in the chapter data have their numbers baked into English (`"Sink 6 ships"`). The keyed versions take `{n}` from `goal`.
 - The pluralisation is deliberately minimal (`one|other`).
 
-## 6. Missing keys (round 4 snapshot)
+## 6. Missing keys (round 4 snapshot): ADDED in round 5
 
-Snapshot taken 2026-11-19 while round 4 agents were still editing, so re-grep before wiring. Method: every string literal
-in `src/**/*.ts` (excluding `src/i18n`, `src/contracts`, comments and `console.*`) that contains English words was
-compared with the values in `en.ts` (placeholders normalised). Nothing outside `src/i18n` and this file was changed.
+All keys proposed in the round 4 snapshot now exist in `en.ts` + `fa.ts`. Wiring them is the UI / level / boss owners' job:
 
-**Synced this round** (`en.ts` + `fa.ts`, Farsi lines tagged `// REVIEW: native speaker`):
-- `menu.touchHint` → `HOLD TO FLY + FIRE - LIFT TO STOP` (`src/ui/menu.ts` `controlsHint`)
-- `tutorial.move.touch` → `HOLD + DRAG ANYWHERE: FLY AND FIRE`
-- `tutorial.fire_air.touch` → `HOLD ANYWHERE: FLY + FIRE. GUNS HIT AIRCRAFT`
-- `tutorial.weapons.touch` → `SWAP ICONS CHANGE WEAPONS`
-- `tutorial.bomb_ground.touch`, `tutorial.flares.touch`, `tutorial.immune.touch` already matched `src/levels/tutorial.ts`.
+| Source | Keys |
+|---|---|
+| `src/bosses/framework.ts:484,506` | `bossBanner.coreExposed`, `bossBanner.coreExposed.sub`, `bossBanner.armourCracking`, `bossBanner.armourCracking.sub` |
+| `src/bosses/citadel_core.ts:62-63` | `bossBanner.shieldGensDown`, `bossBanner.emitterDestroyed` |
+| `src/bosses/heli_gunship.ts:54,61,71` | `bossBanner.heli.drones`, `bossBanner.heli.strafing`, `bossBanner.heli.tailRotor`, `bossBanner.heli.tailRotor.sub` |
+| `src/bosses/ice_dreadnought.ts:51,61` | `bossBanner.ice.drill`, `bossBanner.ice.drill.sub`, `bossBanner.ice.engines`, `bossBanner.ice.engines.sub` |
+| `src/bosses/land_fortress.ts:59,72` | `bossBanner.fortress.ramming`, `bossBanner.fortress.ramming.sub`, `bossBanner.fortress.immobilised` |
+| chapter intro `tl.banner` at t=0 | `banner.operation` = `OPERATION {name}` with `name = t("chapter.<id>.opName")`; `banner.chapterIntro` = `CHAPTER {n} - {name}` with `name = t("chapter.<id>.name")` |
+| `WAVE n` titles | `banner.wave` = `WAVE {n}` (the subtext has a `wave.<chapter>.<slug>.sub` key) |
+| `src/levels/chapters/pacific.ts` | `wave.pacific.surface(.sub)`, `wave.pacific.escort.sub`, `wave.pacific.bomberRun.sub`, `wave.pacific.interceptors.sub`, `wave.pacific.carrierAhead(.sub)` |
+| `src/levels/chapters/jungle.ts` | `wave.jungle.ambush(.sub)`, `wave.jungle.hiddenBase(.sub)`, `wave.jungle.convoy(.sub)`, `wave.jungle.bomberFormation.sub`, `wave.jungle.stronghold(.sub)`, `wave.jungle.gunshipEscort.sub` |
+| `src/levels/chapters/desert.ts` | `wave.desert.oilField(.sub)`, `wave.desert.sandstorm(.sub)`, `wave.desert.armouredConvoy`, `wave.desert.airbase(.sub)`, `wave.desert.sandstormRaid(.sub)`, `wave.desert.armourScreen.sub` |
+| `src/levels/chapters/arctic.ts` | `wave.arctic.blizzard(.sub)`, `wave.arctic.train(.sub)`, `wave.arctic.minefield(.sub)`, `wave.arctic.icebreaker`, `wave.arctic.whiteout(.sub)`, `wave.arctic.outpost` |
+| `src/levels/chapters/citadel.ts` | `wave.citadel.gauntlet(.sub)`, `wave.citadel.droneSwarm`, `wave.citadel.factory(.sub)`, `wave.citadel.heavyEscort.sub`, `wave.citadel.train`, `wave.citadel.walls(.sub)` |
+| `src/ui/hud.ts:293-295` | `hud.rapidAbbr`, `hud.overdriveAbbr`, `hud.magnetAbbr` |
+| `src/ui/results.ts:161` | `results.bombsFlaresShort` |
+| `src/ui/shop.ts:353` | `shop.swapTouch` |
+| `src/ui/settings.ts:79,93,102` | `settings.subtitle`, `settings.keyHelpWide`, `settings.keyHelp`: English values changed to the sentence-case text the screen shows now |
+| `src/ui/chapters.ts:159` | compose `chapters.bestScore` + `chapters.objCount` (existing keys) |
 
-**User-visible strings with no key** (proposed key names in brackets):
+**Round 5 keys** (for the contract fields the Orchestrator added): `settings.scorePopups` SCORE POPUPS,
+`settings.language` LANGUAGE (already existed), `settings.langEn` ENGLISH, `settings.langFa` فارسی (the older
+`settings.language.en/.fa` stay for the demo), `hud.threat` THREAT, `hud.enraged` ENRAGED, `results.maxThreat`
+MAX THREAT, `menu.subtitle` (en `""` so the English logo has no subtitle; fa «جنگنده‌ی آسمان»), `chapters.replayBonus`
+REPLAY BONUS.
 
-| Source | Strings | Proposed keys |
-|---|---|---|
-| `src/bosses/framework.ts:484,506` | `CORE EXPOSED` / `HIT THE WEAK POINT`, `ARMOUR CRACKING` / `FINISH IT` | `bossBanner.coreExposed(.sub)`, `bossBanner.armourCracking(.sub)` |
-| `src/bosses/citadel_core.ts:62-63` | `SHIELD GENERATORS DOWN`, `EMITTER DESTROYED` | `bossBanner.shieldGensDown`, `bossBanner.emitterDestroyed` |
-| `src/bosses/heli_gunship.ts:54,61,71` | `DRONES INBOUND`, `STRAFING RUN`, `TAIL ROTOR DOWN` / `IT'S SPINNING OUT` | `bossBanner.heli.*` |
-| `src/bosses/ice_dreadnought.ts:51,61` | `DRILL CHARGE` / `MOVE ASIDE`, `ENGINES DOWN` / `IT'S SLOWING` | `bossBanner.ice.*` |
-| `src/bosses/land_fortress.ts:59,72` | `RAMMING SPEED` / `GET CLEAR`, `FORTRESS IMMOBILISED` | `bossBanner.fortress.*` |
-| `src/levels/chapters/*.ts` `tl.banner(...)` intro | `OPERATION <NAME>` / `CHAPTER <n> - <NAME>` (5 chapters) | `banner.operation` = `OPERATION {name}` + `banner.chapterIntro` = `CHAPTER {n} - {name}`, or per-chapter `chapter.<id>.introTitle` |
-| `src/levels/chapters/pacific.ts:25,44,62,74,91` | `SURFACE CONTACTS` / `BOMBS SINK SHIPS`, `WAVE 2` / `ESCORT GROUP`, `WAVE 3` / `BOMBER RUN`, `WAVE 4` / `INTERCEPTORS`, `CARRIER GROUP AHEAD` / `CLEAR THE SCREEN` | `wave.pacific.*`; `WAVE {n}` → `banner.wave` |
-| `src/levels/chapters/jungle.ts:25,36,48,59,72,86` | `AMBUSH!` / `HELICOPTERS ON THE FLANKS`, `HIDDEN BASE` / `BOMB THE HANGARS`, `CONVOY` / `STOP THE SUPPLY TRUCKS`, `WAVE 3` / `BOMBER FORMATION`, `JUNGLE STRONGHOLD` / `BOMB THE BASES`, `WAVE 5` / `GUNSHIP ESCORT` | `wave.jungle.*` |
-| `src/levels/chapters/desert.ts:24,35,45,56,70,84` | `OIL FIELD` / `TANKS BURN BRIGHT`, `SANDSTORM` / `WATCH THE CROSSWIND`, `ARMOURED CONVOY`, `FORWARD AIRBASE` / `HIT THE HANGARS BEFORE THEY LAUNCH`, `SANDSTORM RAID` / `CONTACTS IN THE DUST`, `WAVE 6` / `ARMOUR SCREEN` | `wave.desert.*` |
-| `src/levels/chapters/arctic.ts:27,38,50,60,71,83` | `BLIZZARD` / `VISIBILITY DROPPING`, `ARMOURED TRAIN` / `DERAIL IT`, `DRONE MINEFIELD` / `SHOOT A PATH THROUGH`, `ICEBREAKER GROUP`, `WHITEOUT` / `HOLD YOUR LINE`, `POLAR OUTPOST` | `wave.arctic.*` |
-| `src/levels/chapters/citadel.ts:27,39,47,60,72,82` | `MISSILE GAUNTLET` / `FLARES READY`, `DRONE SWARM`, `FACTORY DISTRICT` / `BOMB THE PRODUCTION LINES`, `WAVE 6` / `HEAVY ESCORT`, `ARMOURED TRAIN`, `CITADEL WALLS` / `NO WAY BACK` | `wave.citadel.*` |
-| `src/ui/hud.ts:293-295` | `RPD`, `OVD`, `MAG` (narrow power-up chips) | `hud.rapidAbbr`, `hud.overdriveAbbr`, `hud.magnetAbbr` |
-| `src/ui/results.ts:161` | `BOMBS/FLARES` (narrow variant of `results.bombsFlares`) | `results.bombsFlaresShort` |
-| `src/ui/shop.ts:353` | `WPN/ORD` (touch swap hint) | `shop.swapTouch` (or compose from `touch.weapon` + `touch.ordnance`) |
-| `src/ui/settings.ts:79,93,102` | Sentence-case copies: `Changes apply instantly and are saved.`, `Click an action, then press a new key (Esc cancels). Amber = primary.`, `Select an action, then press a key. Esc cancels.` | Text drifted from `settings.subtitle` / `settings.keyHelpWide` / `settings.keyHelp` (which are upper-case and worded differently): update those values when wiring |
-| `src/ui/chapters.ts:159` | `BEST {score}   OBJ {done}/{total}` built as one template | Compose `chapters.bestScore` + `chapters.objCount` |
-| `src/ui/results.ts:15` | `AAA` default initials | Not translatable (initials stay Latin) |
+`AAA` default initials stay Latin. Other agents request keys in `docs/I18N_KEYS_REQUESTED.md`.
 
-**Covered already / not translated on purpose**
-- Chapter objective texts with baked numbers (`Sink 6 ships`, ...) map to `objective.<id>` with `{n}`.
-- `v0.1  -  MIT` → `common.version`; `CAMPAIGN  -  5 OPERATIONS` → `chapters.subtitle`.
-- Key and button names (`ESC`, `ENTER`, `SPACE`, `SHIFT`, `WASD`, `ARROWS`, `D-PAD`, `WHEEL`, `src/input/keys.ts` labels) stay Latin per the glossary.
-- `src/ui/data.ts` fallback chapter text: only used when the level module is missing (see §2), shows `chapter.<id>.*` instead.
-- Not user-visible: `src/enemies/defs.ts` names/notes (only in the debug dump `src/enemies/index.ts:299`), `src/core/devdemo.ts` (dev-only content), `src/levels/sanity.ts` and `src/core/world.ts` error/log strings, `src/assets/music.ts` form tags, `src/net/leaderboard.ts` HTTP verbs.
+**Round 5 merge (I18N MERGE agent):** all requests in that file are merged and marked DONE there. +7 keys
+(`menu.flightTimeHM`, `menu.flightTimeM`, `settings.secondsShort`, `bossBanner.enraged1/2/3`, `banner.threat`) and 4
+text changes (`upgrade.damage/fireRate/hull/shield.desc`, BALANCE_SPEC U1 values 10% / 7% / +15 / +10). A grep of
+every literal `t("…")` / `tr("…")` / `fromEn` / `bannerText` key in `src/` finds 0 keys missing from `en.ts`; the
+template keys (`medal.*`, `settings.tab.*`, `settings.action.*`, `shop.tab.*`) all resolve. Every `desc` in
+`src/weapons/index.ts` matches its `en.ts` value. Farsi choices: ENRAGED II / III are «خشمگین‌تر!» / «خشم نهایی!» (a
+Latin roman numeral is not allowed in fa); `banner.threat` keeps the numeral as the `{n}` parameter («خطر {n}»).
+
+## 7. Automated Farsi check
+
+```
+node tests/i18n/check.mjs            # exit 0 pass / 1 fail; --verbose prints the 40 highest fa/en length ratios
+```
+`package.json` is not owned by i18n; the Orchestrator may add `"test:i18n": "node tests/i18n/check.mjs"`.
+The script loads both tables through the project's esbuild (`transformSync`, with node's type stripping as fallback).
+`I18N_LOCALES_DIR=<dir>` lints another copy of the tables (used to test the script itself). It fails on:
+- missing / extra keys, `{placeholder}` set mismatch;
+- fa length > 1.35 × en + 4 chars (`menu.subtitle`, the language-name keys and `menu.flightTimeHM` are exempt; the
+  last has one-letter English units «{h}H {m}M» with no natural Farsi short form);
+- banned words (guide rules 2–5: literary/bureaucratic, colloquial spellings, religious/political, «قتل»/«کشتن»).
+  `word` = whole token (a ZWNJ compound is one token, so «جهت‌نماها» passes), `start` = the token or one of its
+  ZWNJ parts starts with it;
+- the vulgar Persian blocklist `tests/i18n/blocklist.json` (39 entries, base64 UTF-8, start / whole-word modes);
+- Latin letters in fa except key names, the `x` multiplier, SKY REAPER, MIT, KAPLAY / TypeScript / Vite,
+  ASSET_CREDITS.md, ENGLISH;
+- ZWNJ at a word start/end or doubled, «می »/«نمی » followed by a space, Arabic «ي»/«ك», Arabic script in en values.
+
+Result now: 501 keys in each table, PASS, fa/en length ratio avg 0.94, max 2.50 (`common.ok` OK → «تأیید»; the
+highest ratios are all 2–4 character English labels). A mutation run with 10 injected faults in a scratch copy reported
+all 10.

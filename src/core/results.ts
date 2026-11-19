@@ -8,7 +8,7 @@ export const RESULTS_TUNING = {
   /** victory credits: score / this (was 100: score was the largest credit source and fed farming) */
   creditScoreDivisorWin: 200,
   /** share of `chapter.reward` paid when the chapter was already completed before (first clear pays it in full) */
-  replayRewardFrac: 0.25,
+  replayRewardFrac: 0.35, // BALANCE_SPEC R2 (was 0.25): a replay closes a budget gap, not farm
   /** defeat credits: score / this (coins are always kept) */
   creditScoreDivisorLoss: 250,
   playerName: "PILOT",

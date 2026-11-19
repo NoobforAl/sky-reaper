@@ -6,6 +6,7 @@ import { cols, M, WIDE } from "./layout";
 import { equippedSkin, drawSkinnedAircraft } from "./skins";
 import { C, esc, fmtNum, MEDAL_COLORS } from "./theme";
 import { button, type HintItem, type Widget } from "./widgets";
+import { aircraftName, isFa, skinName, tr } from "./i18n";
 
 export function nextChapter(svc: Services): ChapterId {
   const d = svc.save.data;
@@ -26,11 +27,14 @@ export function drawLogo(kit: SceneKit, svc: Services, cy: number, scale = 1, cx
   const k = svc.k;
   const t = k.time();
   const bob = Math.sin(t * 1.6) * 3;
+  // the logo stays Latin "SKY REAPER" in every language; Farsi adds a small subtitle under it (FA_STYLE_GUIDE)
+  const sub = isFa() ? tr("menu.subtitle") : "";
   if (svc.sprites.has("ui_logo")) {
     const info = (svc.sprites as { info?: (k: string) => { frameW: number; frameH: number } | undefined }).info?.("ui_logo");
     const w = Math.min(420, (info?.frameW ?? 200) * 2) * scale;
     const h = info ? (w * info.frameH) / info.frameW : w * 0.4;
-    k.drawSprite({ sprite: "ui_logo", pos: k.vec2(cx, cy + bob), anchor: "center", width: w, height: h });
+    g.unflip(cx, () => k.drawSprite({ sprite: "ui_logo", pos: k.vec2(cx, cy + bob), anchor: "center", width: w, height: h }));
+    if (sub) g.text(sub, cx, cy + h / 2 + 14 + bob, { size: 14 * Math.max(1, scale * 0.85), color: C.cyan, anchor: "center", outline: -1 });
     return;
   }
   // stripes behind
@@ -42,7 +46,7 @@ export function drawLogo(kit: SceneKit, svc: Services, cy: number, scale = 1, cx
   // sweeping shine
   const sx = cx - sw / 2 - 100 + ((t * 160) % (sw + 400)) - 100;
   k.drawRect({ pos: k.vec2(sx, cy - 70 * scale + bob), width: 18, height: 130 * scale, color: k.rgb(255, 255, 255), opacity: 0.07, angle: 18 });
-  g.text("TACTICAL AIR STRIKE", cx, cy + 70 * scale + bob, { size: 14 * Math.max(1, scale * 0.85), color: C.text, anchor: "center", outline: -1 });
+  g.text(sub || "TACTICAL AIR STRIKE", cx, cy + 70 * scale + bob, { size: 14 * Math.max(1, scale * 0.85), color: C.text, anchor: "center", outline: -1 });
 }
 
 /** wide layout geometry: [left = logo + record, right = menu] */
@@ -77,7 +81,7 @@ export function registerMenu(svc: Services): void {
           build("credits");
         };
         const bw = WIDE ? 260 : 200;
-        root.set([button({ id: "close", x: (GAME_W - bw) / 2, y: 764, w: bw, h: 52, label: "BACK", onClick: () => root.back?.(), cap: kit.cap("ESC", "B") })], "close");
+        root.set([button({ id: "close", x: (GAME_W - bw) / 2, y: 764, w: bw, h: 52, label: tr("common.back"), onClick: () => root.back?.(), cap: kit.cap("ESC", "B") })], "close");
         return;
       }
       root.back = null;
@@ -112,20 +116,20 @@ export function registerMenu(svc: Services): void {
       const next = nextChapter(svc);
       add(
         "start",
-        prog ? "CONTINUE" : "START MISSION",
-        `CH ${CHAPTER_IDS.indexOf(next) + 1} - ${chapterInfo(next).subtitle.toUpperCase()}`,
+        prog ? tr("menu.continue") : tr("menu.start"),
+        tr("menu.continue.sub", { n: CHAPTER_IDS.indexOf(next) + 1, operation: chapterInfo(next).subtitle.toUpperCase() }),
         () => k.go(SCENES.game, { chapterId: next }),
         C.amber,
         undefined,
         [chapterInfo(next).name, chapterInfo(next).briefing],
       );
-      add("chapters", "CHAPTERS", WIDE ? "SELECT ANY UNLOCKED MISSION" : undefined, () => k.go(SCENES.chapters), C.cyan);
-      add("hangar", "HANGAR", `${fmtNum(svc.save.data.credits)} CR`, () => k.go(SCENES.shop), C.cyan, undefined, ["HANGAR", "Upgrades, weapons, aircraft and paint schemes."]);
-      add("settings", "SETTINGS", WIDE ? "AUDIO - GAMEPLAY - CONTROLS" : undefined, () => k.go(SCENES.settings), C.cyan);
+      add("chapters", tr("menu.chapters"), WIDE ? tr("menu.chapters.sub") : undefined, () => k.go(SCENES.chapters), C.cyan);
+      add("hangar", tr("menu.hangar"), tr("common.creditsShort", { n: fmtNum(svc.save.data.credits) }), () => k.go(SCENES.shop), C.cyan, undefined, [tr("menu.hangar"), tr("menu.hangar.desc")]);
+      add("settings", tr("menu.settings"), WIDE ? tr("menu.settings.sub") : undefined, () => k.go(SCENES.settings), C.cyan);
       add(
         "credits",
-        "CREDITS",
-        WIDE ? "RECORDS & ACKNOWLEDGEMENTS" : undefined,
+        tr("menu.credits"),
+        WIDE ? tr("menu.credits.sub") : undefined,
         () => {
           overlay = "credits";
           build();
@@ -139,45 +143,50 @@ export function registerMenu(svc: Services): void {
 }
 
 function menuHint(m: "kb" | "pad" | "touch", overlay: boolean): HintItem[] {
-  if (overlay) return m === "kb" ? [[["ESC"], "BACK"]] : [[["B"], "BACK"]];
+  if (overlay) return m === "kb" ? [[["ESC"], tr("common.back")]] : [[["B"], tr("common.back")]];
   return m === "kb"
     ? [
-        [["ARROWS"], "MOVE"],
-        [["ENTER"], "SELECT"],
-        [["CLICK"], "SELECT"],
+        [["ARROWS"], tr("common.move")],
+        [["ENTER"], tr("common.select")],
+        [["CLICK"], tr("common.select")],
       ]
     : [
-        [["D-PAD"], "MOVE"],
-        [["A"], "SELECT"],
+        [["D-PAD"], tr("common.move")],
+        [["A"], tr("common.select")],
       ];
 }
 
 /** in-flight controls summary for the current device */
 function controlsHint(kit: SceneKit): HintItem[] | string {
   const mode = kit.mode();
-  if (mode === "touch") return "HOLD TO FLY + FIRE - LIFT TO STOP";
+  if (mode === "touch") return tr("menu.touchHint");
+  const MOVE = tr("common.move");
+  const FIRE = tr("controls.fire");
+  const BOMB = tr("controls.bomb");
+  const FLARE = tr("controls.flare");
+  const SWAP = tr("controls.swap");
   if (mode === "pad")
     return [
-      [["STICK"], "MOVE"],
-      [["A"], "FIRE"],
-      [["B"], "BOMB"],
-      [["Y"], "FLARE"],
-      [["LB", "LT"], "SWAP"],
+      [["STICK"], MOVE],
+      [["A"], FIRE],
+      [["B"], BOMB],
+      [["Y"], FLARE],
+      [["LB", "LT"], SWAP],
     ];
   if (!WIDE)
     return [
-      [["WASD"], "MOVE"],
-      [["SPACE"], "FIRE"],
-      [["K"], "BOMB"],
-      [["SHIFT"], "FLARE"],
-      [["Q/E/R"], "SWAP"],
+      [["WASD"], MOVE],
+      [["SPACE"], FIRE],
+      [["K"], BOMB],
+      [["SHIFT"], FLARE],
+      [["Q/E/R"], SWAP],
     ];
   return [
-    [["W", "A", "S", "D"], "MOVE"],
-    [["SPACE"], "FIRE"],
-    [["K"], "BOMB"],
-    [["SHIFT"], "FLARE"],
-    [["Q", "E", "R"], "SWAP"],
+    [["W", "A", "S", "D"], MOVE],
+    [["SPACE"], FIRE],
+    [["K"], BOMB],
+    [["SHIFT"], FLARE],
+    [["Q", "E", "R"], SWAP],
   ];
 }
 
@@ -186,12 +195,12 @@ function drawFooter(kit: SceneKit, svc: Services): void {
   const hs = svc.save.data.highScores[0];
   const y = GAME_H - 88 - kit.insets.bottom;
   if (hs) {
-    g.text(`HI-SCORE  ${fmtNum(hs.score)}  ${esc(hs.name)}`, GAME_W / 2, y, { size: 14, color: C.amber, anchor: "center", outline: -1 });
+    g.text(tr("menu.hiScore", { score: fmtNum(hs.score), name: esc(hs.name) }), GAME_W / 2, y, { size: 14, color: C.amber, anchor: "center", outline: -1 });
   }
   const hint = controlsHint(kit);
   if (typeof hint === "string") g.text(hint, GAME_W / 2, y + 28, { size: 11, color: C.text, anchor: "center", width: 440, align: "center", outline: 1 });
   else g.hintBar(hint, GAME_W / 2, y + 28, { size: 8 });
-  g.text("v0.1  -  MIT", GAME_W / 2, y + 54, { size: 10, color: C.grey, anchor: "center", outline: 1 });
+  g.text(tr("common.version", { version: "0.1" }), GAME_W / 2, y + 54, { size: 10, color: C.grey, anchor: "center", outline: 1 });
 }
 
 /** wide: pilot record (progress, medals, totals, top pilots, controls) under the logo */
@@ -199,19 +208,19 @@ function drawRecord(kit: SceneKit, svc: Services, x: number, y: number, w: numbe
   const { g } = kit;
   const d = svc.save.data;
   const h = 296;
-  g.panel(x, y, w, h, { title: "PILOT RECORD", accent: C.cyan });
+  g.panel(x, y, w, h, { title: tr("menu.pilotRecord"), accent: C.cyan });
   const [a, b] = cols([0.46, 0.54], 28, x + 22, x + w - 22);
   // left: aircraft + progress
   const ac = d.selectedAircraft;
   const skin = equippedSkin(d, ac);
   g.ring(a!.x + 50, y + 82, 44, C.cyanDim, 1, 0.6);
   drawSkinnedAircraft(g, svc.sprites, ac, skin, a!.x + 50, y + 82 + Math.sin(svc.k.time() * 2) * 3, 2.6);
-  g.text(ac.toUpperCase(), a!.x + 112, y + 54, { size: 18, color: C.white, outline: -1 });
-  g.text(`${skin.toUpperCase()} SCHEME`, a!.x + 112, y + 80, { size: 11, color: C.cyan });
-  g.text(`${fmtNum(d.credits)} CR`, a!.x + 112, y + 100, { size: 14, color: C.amber });
+  g.text(aircraftName(ac), a!.x + 112, y + 54, { size: 18, color: C.white, outline: -1 });
+  g.text(tr("menu.schemeName", { skin: skinName(skin) }), a!.x + 112, y + 80, { size: 11, color: C.cyan, width: a!.w - 112, maxLines: 1 });
+  g.text(tr("common.creditsShort", { n: fmtNum(d.credits) }), a!.x + 112, y + 100, { size: 14, color: C.amber });
   const cleared = CHAPTER_IDS.filter((id) => d.chapters[id]?.completed).length;
-  g.text("CAMPAIGN", a!.x, y + 146, { size: 11, color: C.grey });
-  g.text(`${cleared}/${CHAPTER_IDS.length} CLEARED`, a!.x + a!.w, y + 146, { size: 11, color: C.text, anchor: "topright" });
+  g.text(tr("menu.campaign"), a!.x, y + 146, { size: 11, color: C.grey });
+  g.text(tr("menu.clearedOf", { n: cleared, total: CHAPTER_IDS.length }), a!.x + a!.w, y + 146, { size: 11, color: C.text, anchor: "topright" });
   const segW = (a!.w - 4 * 6) / CHAPTER_IDS.length;
   CHAPTER_IDS.forEach((id, i) => {
     const rec = d.chapters[id];
@@ -225,17 +234,17 @@ function drawRecord(kit: SceneKit, svc: Services, x: number, y: number, w: numbe
   const hrs = Math.floor(t.secondsPlayed / 3600);
   const mins = Math.floor((t.secondsPlayed % 3600) / 60);
   [
-    ["SORTIES", fmtNum(t.plays)],
-    ["KILLS", fmtNum(t.kills)],
-    ["FLIGHT TIME", hrs > 0 ? `${hrs}H ${mins}M` : `${mins}M`],
+    [tr("menu.sorties"), fmtNum(t.plays)],
+    [tr("menu.kills"), fmtNum(t.kills)],
+    [tr("menu.flightTime"), hrs > 0 ? tr("menu.flightTimeHM", { h: hrs, m: mins }) : tr("menu.flightTimeM", { m: mins })],
   ].forEach(([n, v], i) => {
     g.text(n!, a!.x, y + 214 + i * 22, { size: 11, color: C.grey });
     g.text(v!, a!.x + a!.w, y + 214 + i * 22, { size: 12, color: C.text, anchor: "topright" });
   });
   // right: top pilots
-  g.text("TOP PILOTS", b!.x, y + 28, { size: 13, color: C.cyan });
+  g.text(tr("common.topPilots"), b!.x, y + 28, { size: 13, color: C.cyan });
   const hs = d.highScores.slice(0, 8);
-  if (!hs.length) g.text("No records yet. Fly a mission!", b!.x, y + 56, { size: 12, color: C.grey });
+  if (!hs.length) g.text(tr("common.noRecordsFly"), b!.x, y + 56, { size: 12, color: C.grey, width: b!.w });
   hs.forEach((e, i) => {
     const ry = y + 54 + i * 26;
     const col = i === 0 ? C.gold : i < 3 ? C.white : C.text;
@@ -243,7 +252,7 @@ function drawRecord(kit: SceneKit, svc: Services, x: number, y: number, w: numbe
     g.text(`${i + 1}.`, b!.x, ry, { size: 12, color: C.text });
     g.text(esc(e.name), b!.x + 34, ry, { size: 13, color: col });
     const ci = CHAPTER_IDS.indexOf(e.chapter as ChapterId);
-    g.text(ci >= 0 ? `CH${ci + 1}` : "", b!.x + 150, ry, { size: 11, color: C.text });
+    g.text(ci >= 0 ? tr("common.chapterShort", { n: ci + 1 }) : "", b!.x + 150, ry, { size: 11, color: C.text });
     g.text(fmtNum(e.score), b!.x + b!.w, ry, { size: 13, color: col, anchor: "topright" });
   });
   // controls strip under the panel
@@ -251,7 +260,7 @@ function drawRecord(kit: SceneKit, svc: Services, x: number, y: number, w: numbe
   const cy = y + h + 30;
   if (typeof hint === "string") g.text(hint, x + w / 2, cy, { size: 12, color: C.text, anchor: "center", outline: 1 });
   else g.hintBar(hint, x + w / 2, cy, { size: 10 });
-  g.text("v0.1  -  MIT", x + w / 2, cy + 32, { size: 10, color: C.grey, anchor: "center", outline: 1 });
+  g.text(tr("common.version", { version: "0.1" }), x + w / 2, cy + 32, { size: 10, color: C.grey, anchor: "center", outline: 1 });
 }
 
 function drawCredits(kit: SceneKit, svc: Services): void {
@@ -261,27 +270,21 @@ function drawCredits(kit: SceneKit, svc: Services): void {
   const y = WIDE ? 360 : 300;
   const h = WIDE ? 380 : 440;
   if (WIDE) g.rect(0, 0, GAME_W, GAME_H, C.dark, 0.55);
-  g.panel(x, y, w, h, { title: "CREDITS & RECORDS" });
-  const lines = [
-    "SKY REAPER - a vertical shoot 'em up",
-    "Built with KAPLAY + TypeScript + Vite",
-    "Art & audio: original / open licensed,",
-    "see ASSET_CREDITS.md",
-    "Code: MIT License",
-  ];
+  g.panel(x, y, w, h, { title: tr("menu.creditsTitle") });
+  const lines = [tr("menu.creditsLine1"), tr("menu.creditsLine2"), tr("menu.creditsLine3"), tr("menu.creditsLine4"), tr("menu.creditsLine5")];
   const [c1, c2] = WIDE ? cols([0.45, 0.55], 32, x + 20, x + w - 20) : [{ x: x + 20, w: w - 40 }, { x: x + 20, w: w - 40 }];
   lines.forEach((l, i) => g.text(l, c1!.x, y + 28 + i * 22, { size: 12, color: i === 0 ? C.amber : C.text, width: c1!.w }));
   const ly = WIDE ? y + 28 : y + 140;
-  g.text("TOP PILOTS", c2!.x, ly, { size: 14, color: C.cyan });
+  g.text(tr("common.topPilots"), c2!.x, ly, { size: 14, color: C.cyan });
   const hs = svc.save.data.highScores;
-  if (!hs.length) g.text("No records yet. Fly a mission!", c2!.x, ly + 28, { size: 12, color: C.grey });
+  if (!hs.length) g.text(tr("common.noRecordsFly"), c2!.x, ly + 28, { size: 12, color: C.grey, width: c2!.w });
   hs.slice(0, 10).forEach((e, i) => {
     const ry = ly + 26 + i * (WIDE ? 30 : 24);
     const col = i === 0 ? C.gold : i < 3 ? C.white : C.text;
     g.text(`${String(i + 1).padStart(2, " ")}.`, c2!.x, ry, { size: 13, color: C.grey });
     g.text(esc(e.name), c2!.x + 40, ry, { size: 13, color: col });
     const ci = CHAPTER_IDS.indexOf(e.chapter as ChapterId);
-    g.text(ci >= 0 ? `CH${ci + 1}` : "", c2!.x + 180, ry, { size: 12, color: C.grey });
+    g.text(ci >= 0 ? tr("common.chapterShort", { n: ci + 1 }) : "", c2!.x + 180, ry, { size: 12, color: C.grey });
     g.text(fmtNum(e.score), c2!.x + c2!.w, ry, { size: 13, color: col, anchor: "topright" });
   });
 }

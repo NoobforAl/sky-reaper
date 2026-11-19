@@ -9,8 +9,10 @@ const { L, C, R, LC, RC } = LANES;
 
 export function jungle(): ChapterScript {
   const tl = new TL();
+  // round 5 balance E1 (docs/BALANCE_SPEC.md §3): chapter HP scale
+  tl.setDefaults({ hpScale: 1.1 });
 
-  tl.at(0).banner("OPERATION GREEN HELL", "CHAPTER 2 - JUNGLE", 3200);
+  tl.at(0).banner("OPERATION GREEN HELL", "CHAPTER 2 - JUNGLE", 3200, { key: "banner.operation", paramKeys: { name: ["chapter.jungle.opName", "GREEN HELL"] }, subKey: "banner.chapterIntro", subParams: { n: 2 }, subParamKeys: { name: ["chapter.jungle.name", "JUNGLE"] } });
   tl.at(3).vee("fighter_basic", 5, C);
   tl.at(6).spawns("tank_light", [L, R]);
   tl.at(8).stream("fighter_basic", 5, LC, 420);
@@ -22,7 +24,7 @@ export function jungle(): ChapterScript {
   tl.at(20).line("fighter_basic", 4, C, { dx: 80 });
 
   // ---- ambush from the canopy
-  tl.at(25).banner("AMBUSH!", "HELICOPTERS ON THE FLANKS", 2000);
+  tl.at(25).banner("AMBUSH!", "HELICOPTERS ON THE FLANKS", 2000, { key: "wave.jungle.ambush", subKey: "wave.jungle.ambush.sub" });
   tl.at(26).sideAmbush("helicopter", 3, "left", 140, 500);
   tl.at(29).sideAmbush("helicopter", 3, "right", 200, 500);
   tl.at(31).spawn("gunboat", LC).spawn("gunboat", RC, undefined, -100);
@@ -33,7 +35,9 @@ export function jungle(): ChapterScript {
 
   // ---- hidden base #1
   tl.at(43).pickup("bomb", LC).pickup("bomb", RC);
-  tl.at(45).banner("HIDDEN BASE", "BOMB THE HANGARS", 2200);
+  // QA R4-4: one more bomb ~2 s before the first base pair, dropped in its lane
+  tl.at(44).pickup("bomb", L + 50);
+  tl.at(45).banner("HIDDEN BASE", "BOMB THE HANGARS", 2200, { key: "wave.jungle.hiddenBase", subKey: "wave.jungle.hiddenBase.sub" });
   tl.at(46).spawn("military_base", L + 50).spawn("hangar", R - 60, undefined, -60);
   tl.at(46.5).spawns("aa_turret", [L + 110, R - 120]);
   tl.at(48).pickup("bomb", LC).pickup("bomb", RC);
@@ -45,18 +49,19 @@ export function jungle(): ChapterScript {
   tl.at(62).vee("fighter_basic", 5, LC);
 
   // ---- road convoy
-  tl.at(66).banner("CONVOY", "STOP THE SUPPLY TRUCKS", 2000);
+  tl.at(66).banner("CONVOY", "STOP THE SUPPLY TRUCKS", 2000, { key: "wave.jungle.convoy", subKey: "wave.jungle.convoy.sub" });
   tl.at(67).convoy(R - 50, 5, 1100);
   tl.at(69).stream("fighter_basic", 5, L, 400);
   tl.at(72).spawns("gunship_light", [LC, RC]);
   tl.at(75).pickup("power", LC);
-  tl.at(77).spawns("gunboat", [C, C]);
+  // round 5 (#7): the two river boats used to spawn on the same spot (the river squeezes x); second one trails
+  tl.at(77).spawn("gunboat", C).spawn("gunboat", C, undefined, -120);
   tl.at(79).line("fighter_basic", 5, C, { dx: 70 });
   tl.at(83).spawns("tank_heavy", [L + 30]).spawns("aa_turret", [R - 30]);
   tl.at(86).stream("interceptor", 3, RC, 600);
 
   // ---- bombers over the river
-  tl.at(91).banner("WAVE 3", "BOMBER FORMATION", 2000);
+  tl.at(91).banner("WAVE 3", "BOMBER FORMATION", 2000, { key: "banner.wave", params: { n: 3 }, subKey: "wave.jungle.bomberFormation.sub" });
   tl.at(92).line("bomber", 2, C, { dx: 160 });
   tl.at(93).vee("fighter_basic", 5, C, { y: -140 });
   tl.at(97).spawns("gunboat", [C]).spawns("tank_light", [L, R]);
@@ -68,22 +73,25 @@ export function jungle(): ChapterScript {
   tl.at(114).spawns("helicopter_elite", [R - 40]);
 
   // ---- hidden base #2
+  // QA R4-4: the second base pair sits in the inner lanes (LC / RC) where the player flies, with a bomb restock 2 s
+  // before it; the AA nests moved out to the banks (they used to spawn on top of the base and hangar, #7)
   tl.at(117).pickup("bomb", LC).pickup("bomb", RC);
-  tl.at(119).banner("JUNGLE STRONGHOLD", "BOMB THE BASES", 2000);
-  tl.at(120).spawn("military_base", R - 60).spawn("hangar", L + 60, undefined, -80);
-  tl.at(120.5).spawns("missile_launcher", [C]).spawns("aa_turret", [LC, RC]);
+  tl.at(118).pickup("bomb", C);
+  tl.at(119).banner("JUNGLE STRONGHOLD", "BOMB THE BASES", 2000, { key: "wave.jungle.stronghold", subKey: "wave.jungle.stronghold.sub" });
+  tl.at(120).spawn("military_base", RC).spawn("hangar", LC, undefined, -80);
+  tl.at(120.5).spawns("missile_launcher", [C]).spawns("aa_turret", [L + 10, R - 10]);
   tl.at(121).spawn("radar_station", R - 60, undefined, -170);
   tl.at(122).pickup("bomb", C).pickup("bomb", LC);
   tl.at(124).vee("fighter_basic", 5, C, { y: -60 });
   tl.at(128).stream("fighter_basic", 6, L, 320).stream("fighter_basic", 6, R, 320);
   tl.at(132).spawns("tank_heavy", [LC, RC]);
   tl.at(134).spawns("interceptor", [L, R]);
-  tl.at(137).pickup("power", C);
-  tl.at(138).spawns("gunboat", [C, C]);
+  // round 5 balance P5: the t 137 power pickup is gone (3 scripted power-ups left)
+  tl.at(138).spawn("gunboat", C).spawn("gunboat", C, undefined, -120);
   tl.at(141).spawn("missile_carrier", C).spawn("mine_layer", LC, undefined, -60);
 
   // ---- final push
-  tl.at(146).banner("WAVE 5", "GUNSHIP ESCORT", 2000);
+  tl.at(146).banner("WAVE 5", "GUNSHIP ESCORT", 2000, { key: "banner.wave", params: { n: 5 }, subKey: "wave.jungle.gunshipEscort.sub" });
   tl.at(147).sideAmbush("helicopter", 3, "left", 120, 450);
   tl.at(147).sideAmbush("helicopter", 3, "right", 220, 450);
   tl.at(152).line("fighter_basic", 5, C, { dx: 70 });
@@ -121,8 +129,10 @@ export function jungle(): ChapterScript {
         { id: "jun_aa", text: "Silence 8 AA guns", stat: "tag:aa", goal: 8, cmp: "gte", reward: 200 },
         { id: "jun_rate", text: "Destroy 60% of enemies", stat: "killRate", goal: 0.6, cmp: "gte", reward: 250 },
       ],
-      reward: 700,
-      medalScores: medals([32000, 43500, 54500, 64000], 0.95),
+      // round 5: R1 reward 700 -> 750; QA R4-3 wide factor 0.95 -> 1.1; M1 starting guess (gold / ace x1.25 for THREAT
+      // score, BALANCE_SPEC §8): re-derive from round-5 QA medians
+      reward: 750,
+      medalScores: medals([32000, 43500, 68000, 80000], 1.1),
     },
     features: tl.features,
   };

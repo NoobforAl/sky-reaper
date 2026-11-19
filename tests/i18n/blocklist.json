@@ -1,0 +1,161 @@
+{
+  "_comment": "Vulgar / rude Persian substrings, base64(UTF-8) so they are not plain text in the repo. mode=start: no Farsi word may begin with it; mode=word: whole word only. Used by tests/i18n/check.mjs.",
+  "entries": [
+    {
+      "b64": "2qnbjNix",
+      "mode": "start"
+    },
+    {
+      "b64": "2KzZhtiv2Yc=",
+      "mode": "start"
+    },
+    {
+      "b64": "2qnYs9qp2LQ=",
+      "mode": "start"
+    },
+    {
+      "b64": "2qnYs+KAjNqp2LQ=",
+      "mode": "start"
+    },
+    {
+      "b64": "2YTYp9i024w=",
+      "mode": "start"
+    },
+    {
+      "b64": "2K3YsdmI2YXYstin2K/Zhw==",
+      "mode": "start"
+    },
+    {
+      "b64": "2K3Ysdin2YXYstin2K/Zhw==",
+      "mode": "start"
+    },
+    {
+      "b64": "2KzYp9qp2LQ=",
+      "mode": "start"
+    },
+    {
+      "b64": "2YLYsdmF2LPYp9mC",
+      "mode": "start"
+    },
+    {
+      "b64": "2LTYp9i0",
+      "mode": "start"
+    },
+    {
+      "b64": "2b7ZgduM2YjYsg==",
+      "mode": "start"
+    },
+    {
+      "b64": "2K/bjNmI2Ks=",
+      "mode": "start"
+    },
+    {
+      "b64": "2K7Yp9uM2Yc=",
+      "mode": "start"
+    },
+    {
+      "b64": "2LPaqdiz",
+      "mode": "start"
+    },
+    {
+      "b64": "2q/Yp9uM24zYr9mG",
+      "mode": "start"
+    },
+    {
+      "b64": "2Kjar9in",
+      "mode": "start"
+    },
+    {
+      "b64": "2q/Yp9uM24zYrw==",
+      "mode": "start"
+    },
+    {
+      "b64": "2KrYrtmF4oCM2LParw==",
+      "mode": "start"
+    },
+    {
+      "b64": "2b7Yr9ix2LParw==",
+      "mode": "start"
+    },
+    {
+      "b64": "2YXYp9iv2LHYrNmG2K/Zhw==",
+      "mode": "start"
+    },
+    {
+      "b64": "2qnZiNmG24w=",
+      "mode": "start"
+    },
+    {
+      "b64": "2KfZiNio24w=",
+      "mode": "start"
+    },
+    {
+      "b64": "2YTZiNin2Lc=",
+      "mode": "start"
+    },
+    {
+      "b64": "2YHYp9it2LTZhw==",
+      "mode": "start"
+    },
+    {
+      "b64": "2YfYsdiy2Yc=",
+      "mode": "start"
+    },
+    {
+      "b64": "2qnYsw==",
+      "mode": "word"
+    },
+    {
+      "b64": "2qnZiNmG",
+      "mode": "word"
+    },
+    {
+      "b64": "2q/ZiNiy",
+      "mode": "word"
+    },
+    {
+      "b64": "2q/Zhw==",
+      "mode": "word"
+    },
+    {
+      "b64": "2q/ZiNmH",
+      "mode": "word"
+    },
+    {
+      "b64": "2LHbjNiv",
+      "mode": "word"
+    },
+    {
+      "b64": "2LHbjNiv2YU=",
+      "mode": "word"
+    },
+    {
+      "b64": "2KrYrtmF24w=",
+      "mode": "word"
+    },
+    {
+      "b64": "2YXZhdmH",
+      "mode": "word"
+    },
+    {
+      "b64": "2qnbjNix24w=",
+      "mode": "word"
+    },
+    {
+      "b64": "2qnYs9uM4oCM2K7ZhA==",
+      "mode": "word"
+    },
+    {
+      "b64": "2KzZgg==",
+      "mode": "word"
+    },
+    {
+      "b64": "2LPar+KAjNmF2LXYqA==",
+      "mode": "word"
+    },
+    {
+      "b64": "2K7YsQ==",
+      "mode": "word"
+    }
+  ]
+}

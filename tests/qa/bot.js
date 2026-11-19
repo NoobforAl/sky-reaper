@@ -55,7 +55,18 @@
       hitsUnavoidable: 0,
       hitsWithEscape: 0,
       contactHits: 0,
+      // round 5 telemetry: THREAT rank, boss soft-timer escalation (per phase), gate-hold seconds, power at boss
+      threatMax: 0,
+      threatUps: [],
+      bossEsc: [0, 0, 0],
+      bossEscT: [0, 0, 0],
+      bossGatedSec: null,
+      bossPhaseSec: null,
+      bossPower: null,
     };
+    // godMode boss runs: BALANCE_SPEC §11 A5 measures the boss "at power 4", so pin power 4 once the boss spawns
+    // (opts.bossPower overrides; 0 disables the pin). Only affects god runs (boss / fps modes).
+    var pinPower = godRun ? (opts.bossPower == null ? 4 : opts.bossPower | 0) : 0;
     window.__qaLog = L;
 
     // ---------------------------------------------------------------- owner bookkeeping
@@ -116,7 +127,28 @@
     });
     ev.on("bossDefeated", function () {
       L.bossDefeatT = w.time;
+      sampleBoss(0);
     });
+    var lastThr = 0;
+    function sampleBoss(dt) {
+      var b = w.boss;
+      var thr = w.threat || 0;
+      if (thr > lastThr) L.threatUps.push({ t: +w.time.toFixed(1), lvl: thr });
+      lastThr = thr;
+      if (thr > L.threatMax) L.threatMax = thr;
+      if (!b) return;
+      if (L.bossPower == null) L.bossPower = w.player.power;
+      if (pinPower > 0 && w.player.power !== pinPower) w.player.power = pinPower;
+      try {
+        var h = b.hud();
+        var ph = Math.max(1, Math.min(3, h.phase | 0)) - 1;
+        var esc = h.escalation | 0;
+        if (esc > L.bossEsc[ph]) L.bossEsc[ph] = esc;
+        if (esc > 0) L.bossEscT[ph] += dt;
+        if (h.gatedSec) L.bossGatedSec = h.gatedSec.map(function (x) { return +x.toFixed(2); });
+        if (b.phaseSec) L.bossPhaseSec = b.phaseSec.map(function (x) { return +x.toFixed(2); });
+      } catch (e) {}
+    }
     ev.on("chapterComplete", function () {
       L.outcome = "victory";
       L.endT = w.time;
@@ -360,6 +392,7 @@
     }
     function botFull() {
       stepN++;
+      if (w.state === "playing") sampleBoss(SIM_DT);
       var p = w.player;
       if (w.state !== "playing" || !p.alive) return NEUTRAL;
       if (w.time > maxSimSec) return NEUTRAL;

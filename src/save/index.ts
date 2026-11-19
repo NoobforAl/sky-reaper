@@ -105,6 +105,9 @@ function sanitizeSettings(v: unknown): Settings {
     showFps: bool(v.showFps, d.showFps),
     touchControls: tc === "auto" || tc === "on" || tc === "off" ? tc : d.touchControls,
     bindings: sanitizeBindings(v.bindings),
+    // round 5 (optional in the contract): old saves have neither field -> defaults (popups on, English)
+    scorePopups: bool(v.scorePopups, d.scorePopups ?? true),
+    language: v.language === "fa" || v.language === "en" ? v.language : (d.language ?? "en"),
   };
 }
 

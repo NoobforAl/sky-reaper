@@ -7,8 +7,29 @@
  * The cursor `t` is absolute seconds; `at()` sets it, `wait()` advances it. Every helper adds events at the cursor.
  * Formation geometry lives in `formationSlot()` (shared with the runner, documented in docs/LEVEL_NOTES.md).
  */
-import { DESIGN_W, WIDE, type EnemySpawnOpts, type LevelEvent, type PickupKind } from "../contracts";
+import { DESIGN_W, PIXEL_SCALE, WIDE, type EnemySpawnOpts, type LevelEvent, type PickupKind } from "../contracts";
+import { enemySystem } from "../enemies";
+import type { BannerI18n } from "./i18n";
+import { OVERLAP_K } from "./spacing";
 import type { FeatureCue, FeatureKind } from "./types";
+
+/**
+ * Smallest stagger (ms) for a same-spot stream so consecutive units do not start on top of each other (round 5, #7):
+ * the leader must have flown its own sprite height (x OVERLAP_K, + 6 u) before the next one appears.
+ */
+export function minStreamMs(enemy: string): number {
+  const d = enemySystem.defs[enemy];
+  if (!d) return 0;
+  const sp = d.movement.speed || 0;
+  if (sp <= 0) return 0;
+  return Math.ceil((((d.size[1] * PIXEL_SCALE * OVERLAP_K + 6) / sp) * 1000) / 10) * 10;
+}
+
+/** hover / strafe units stop at their holdY: units sharing an entry point would stack there */
+function holdsPosition(enemy: string): boolean {
+  const k = enemySystem.defs[enemy]?.movement.kind;
+  return k === "hover" || k === "strafe";
+}
 
 export type Shape = "line" | "vee" | "column" | "arc";
 
@@ -128,12 +149,19 @@ export class TL {
   column(enemy: string, count: number, x: number, f: FormOpts = {}): this {
     return this.form(enemy, count, x, "column", f);
   }
+  /** arc radius is raised so neighbours sit >= 1.1 sprite sizes apart along the arc (round 5, #7) */
   arc(enemy: string, count: number, x: number, f: FormOpts = {}): this {
+    const d = enemySystem.defs[enemy];
+    if (d && count > 1) {
+      const step = ((120 * Math.PI) / 180) / (count - 1);
+      const minR = Math.ceil((Math.max(d.size[0], d.size[1]) * PIXEL_SCALE * 1.1) / step);
+      if ((f.dx ?? 110) < minR) f = { ...f, dx: minR };
+    }
     return this.form(enemy, count, x, "arc", f);
   }
-  /** same-spot stream: count units from (x,y), `ms` apart (a "snake" entry) */
+  /** same-spot stream: count units from (x,y), `ms` apart (a "snake" entry); ms is raised to minStreamMs() */
   stream(enemy: string, count: number, x: number, ms: number, opts?: EnemySpawnOpts, y?: number): this {
-    return this.form(enemy, count, x, undefined, { dx: 0, dy: 0, stagger: ms, opts, y });
+    return this.form(enemy, count, x, undefined, { dx: 0, dy: 0, stagger: Math.max(ms, minStreamMs(enemy)), opts, y });
   }
   /** mirrored pair of streams from both sides of the screen */
   pincer(enemy: string, count: number, inset: number, ms: number, opts?: EnemySpawnOpts): this {
@@ -142,8 +170,14 @@ export class TL {
     return this;
   }
 
-  banner(text: string, subtext?: string, ms = 2400): this {
-    this.events.push({ t: this.t, type: "banner", text, subtext, ms });
+  /**
+   * Banner with its i18n keys (round 5): the English text is the fallback and what other tools read; the runner
+   * translates `i18n.key` / `i18n.subKey` when the banner fires (so a locale switch applies to the next banner).
+   */
+  banner(text: string, subtext?: string, ms = 2400, i18n?: BannerI18n): this {
+    const e: LevelEvent & { i18n?: BannerI18n } = { t: this.t, type: "banner", text, subtext, ms };
+    if (i18n) e.i18n = i18n;
+    this.events.push(e);
     return this;
   }
   scroll(speed: number): this {
@@ -186,10 +220,20 @@ export class TL {
   /**
    * units burst in from one side at mid-screen height (dir makes sideways movers head inward).
    * Use units with sideways motion: interceptor(_elite) (diagonal), helicopter / gunship_light (hover/strafe).
+   * Round 5 (#7): sideways movers enter one behind another (each follower 34 u higher, stagger >= minStreamMs) instead
+   * of each spawning on the path of the one before; units that hold a position (hover / strafe) would all stack on one
+   * hold point, so they drop in at the flank side by side, one sprite width + 12 u apart.
    */
   sideAmbush(enemy: string, count: number, side: "left" | "right", y = 160, ms = 260, opts?: EnemySpawnOpts): this {
+    const dir = side === "left" ? 1 : -1;
+    const o = { ...(opts ?? {}), dir } as EnemySpawnOpts;
+    if (holdsPosition(enemy)) {
+      const w = (enemySystem.defs[enemy]?.size[0] ?? 32) * PIXEL_SCALE;
+      const x0 = side === "left" ? 24 + w / 2 : DESIGN_W - 24 - w / 2;
+      return this.form(enemy, count, x0, undefined, { dx: dir * (w + 12), dy: 0, stagger: ms, opts: o });
+    }
     const x = side === "left" ? -24 : DESIGN_W + 24;
-    return this.form(enemy, count, x, undefined, { dx: 0, dy: 34, y, stagger: ms, opts: { ...(opts ?? {}), dir: side === "left" ? 1 : -1 } });
+    return this.form(enemy, count, x, undefined, { dx: 0, dy: -34, y, stagger: Math.max(ms, minStreamMs(enemy)), opts: o });
   }
   /** drone minefield: a loose grid of kamikaze drones + mines-carrier escorts */
   droneMinefield(rows: number, cols = 5, enemy = "drone_kamikaze"): this {
@@ -211,8 +255,9 @@ export class TL {
     const t0 = this.t;
     this.feature("road", x, len);
     this.at(t0 + 0.6).column("tank_light", vehicles, x, { dy: 50 });
-    this.at(t0 + 0.6).spawn("armored_vehicle", x - 46, { dir: 1 }, -80);
-    this.at(t0 + 0.6).spawn("armored_vehicle", x + 46, { dir: -1 }, -80 - vehicles * 25);
+    // outriders 64 u off the road centre (was 46: their diagonal drift put them into the truck column at once, #7)
+    this.at(t0 + 0.6).spawn("armored_vehicle", x - 64, { dir: 1 }, -80);
+    this.at(t0 + 0.6).spawn("armored_vehicle", x + 64, { dir: -1 }, -80 - vehicles * 25);
     this.at(t0 + 0.6).spawn("tank_heavy", x, undefined, -60 - vehicles * 50);
     return this.at(t0);
   }

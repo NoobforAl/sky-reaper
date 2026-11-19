@@ -62,6 +62,8 @@ export interface RunStats {
   /** current combo multiplier (1..2) and seconds left in the chain; optional (engine fills them at runtime) */
   combo?: number;
   comboTimer?: number;
+  /** round 5: highest THREAT rank reached this run (results screen) */
+  threatMax?: number;
 }
 
 export type FxKind =
@@ -154,4 +156,8 @@ export interface WorldAPI {
   completeChapter(): void;
   /** current difficulty multiplier (from settings; 1 = normal) */
   readonly difficulty: number;
+  /** round 5: ChapterDef.index (0-based) */
+  readonly chapterIndex?: number;
+  /** round 5: THREAT rank 0..3 (BALANCE_SPEC §7); enemies/bosses read it to scale fire rate / bullet speed */
+  readonly threat?: number;
 }

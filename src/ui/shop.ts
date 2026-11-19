@@ -26,8 +26,8 @@ import { drawSkinnedAircraft, equippedSkin, ownsSkin, skinCatalog, skinLockedBy,
 import { C, esc, fmtNum, type RGB } from "./theme";
 import { button, readableSize, type Gfx, type WState, type Widget } from "./widgets";
 import type { ShopFocus } from "./desktop/store";
+import { aircraftDesc, aircraftName, isFa, skinDesc, skinName, tr, upgradeDesc, upgradeName, weaponDesc, weaponName } from "./i18n";
 
-const pct = (v: number) => `${Math.round(v * 100)}%`;
 /** cumulative effect of an upgrade at level `lv` (for tooltips / details panel) */
 export function upgradeEffect(u: UpgradeDef, lv: number): string {
   const t = u.perLevel * lv;
@@ -35,33 +35,32 @@ export function upgradeEffect(u: UpgradeDef, lv: number): string {
     case "damage":
     case "fireRate":
     case "speed":
-      return `+${pct(t)}`;
+      return tr("shop.effect.pct", { n: Math.round(t * 100) });
     case "hull":
-      return `+${Math.round(t)} HP`;
+      return tr("shop.effect.hp", { n: Math.round(t) });
     case "shield":
-      return `+${Math.round(t)} SHIELD`;
+      return tr("shop.effect.shield", { n: Math.round(t) });
     case "bombs":
-      return `+${Math.round(t)} CAP`;
+      return tr("shop.effect.cap", { n: Math.round(t) });
     case "flares":
-      return `-${t.toFixed(1)} S`;
+      return tr("shop.effect.seconds", { n: t.toFixed(1) });
     default:
-      return `LV ${lv}`;
+      return tr("shop.lv", { n: lv });
   }
 }
 
 /** details panel entry: ShopFocus + optional big preview */
 interface Detail extends ShopFocus {
   accent?: RGB;
+  /** last line is a warning (not enough credits / locked): drawn red */
+  bad?: boolean;
+  /** state badge is the locked state (grey) */
+  stateLocked?: boolean;
   preview?: (g: Gfx, cx: number, cy: number, t: number) => void;
 }
 
 type Tab = "upgrades" | "arsenal" | "aircraft" | "skins";
-const TABS: Array<{ id: Tab; label: string; desc: string }> = [
-  { id: "upgrades", label: "UPGRADES", desc: "Permanent airframe and weapon improvements. Every level applies to every aircraft." },
-  { id: "arsenal", label: "ARSENAL", desc: "Unlock primary guns (air to air) and ordnance (air to ground). Swap them in flight." },
-  { id: "aircraft", label: "AIRCRAFT", desc: "Buy and select the airframe for your next sortie." },
-  { id: "skins", label: "SKINS", desc: "Paint schemes. Buy once, then equip a different scheme on each aircraft." },
-];
+const TAB_IDS: Tab[] = ["upgrades", "arsenal", "aircraft", "skins"];
 
 let lastTab: Tab = "upgrades";
 
@@ -85,13 +84,14 @@ export function registerShop(svc: Services): void {
     let shownCredits = save.data.credits;
     let creditFlash = 0;
     let skinAc: AircraftId = save.data.selectedAircraft;
+    const TABS = TAB_IDS.map((id) => ({ id, label: tr(`shop.tab.${id}`), desc: tr(`shop.tab.${id}.desc`) }));
     const [cCat, cList, cInfo] = WIDE ? wideCols() : [null, { x: 20, w: GAME_W - 40 }, null];
     const LX = cList!.x;
     const LW = cList!.w;
 
     /** per-widget item info (tooltips + details panel) */
     const info = new Map<string, () => Detail>();
-    const act = () => (kit.mode() === "kb" ? "CLICK / ENTER" : kit.mode() === "pad" ? "PRESS A" : "TAP");
+    const act = () => (kit.mode() === "kb" ? tr("act.clickEnter") : kit.mode() === "pad" ? tr("act.pressA") : tr("act.tap"));
     const infoLines = (f: Detail | undefined): string[] | null => (f ? [`${f.title}  -  ${f.kind}`, ...f.lines] : null);
     /** in WIDE the details panel already shows everything: keep tooltips short there */
     const tip = (id: string) => () => {
@@ -110,7 +110,7 @@ export function registerShop(svc: Services): void {
       drawContent: (kk) => {
         const { g } = kk;
         const top = 18 + kk.insets.top;
-        g.text("HANGAR", WIDE ? M : 24, top + (WIDE ? 30 : 22), { size: WIDE ? 32 : 28, color: C.amber, anchor: "left", outline: 2 });
+        g.text(tr("shop.title"), WIDE ? M : 24, top + (WIDE ? 30 : 22), { size: WIDE ? 32 : 28, color: C.amber, anchor: "left", outline: 2 });
         // animated credits counter
         const target = save.data.credits;
         shownCredits += (target - shownCredits) * Math.min(1, k.dt() * 10);
@@ -119,7 +119,7 @@ export function registerShop(svc: Services): void {
         const cw = WIDE ? 240 : 176;
         const cx = GAME_W - (WIDE ? M : 20) - cw;
         g.panel(cx, top + 2, cw, WIDE ? 50 : 42, { accent: C.cyan });
-        g.text("CREDITS", cx + 12, top + (WIDE ? 27 : 23), { size: 10, color: C.cyan, anchor: "left" });
+        g.text(tr("shop.credits"), cx + 12, top + (WIDE ? 27 : 23), { size: 10, color: C.cyan, anchor: "left" });
         g.text(fmtNum(shownCredits), cx + cw - 12, top + (WIDE ? 27 : 23), { size: WIDE ? 24 : 20, color: creditFlash > 0 ? C.red : C.amber, anchor: "right" });
         if (WIDE) {
           const t = TABS.find((q) => q.id === tab)!;
@@ -128,8 +128,8 @@ export function registerShop(svc: Services): void {
           g.text(esc(t.desc), LX + lw, top + 32, { size: 11, color: C.text, anchor: "left", width: cx - LX - lw - 20, maxLines: 1 });
         }
         if (tab === "arsenal") {
-          g.text("PRIMARY - AIR TO AIR", LX + 4, WIDE ? LIST_Y + 4 : 148, { size: 12, color: C.cyan });
-          g.text("ORDNANCE - AIR TO GROUND", LX + 4, WIDE ? LIST_Y + 310 : 450, { size: 12, color: C.cyan });
+          g.text(tr("shop.primaryAirToAir"), LX + 4, WIDE ? LIST_Y + 4 : 146, { size: 12, color: C.cyan });
+          g.text(tr("shop.ordnanceAirToGround"), LX + 4, WIDE ? LIST_Y + 310 : 448, { size: 12, color: C.cyan });
         }
         if (tab === "skins" && !WIDE) drawSkinStage(g, kk.age(), 20, 198, GAME_W - 40, 120);
         if (WIDE) drawDetails(g, cInfo!.x, LIST_Y, cInfo!.w, BOTTOM_Y - 22 - LIST_Y);
@@ -147,7 +147,7 @@ export function registerShop(svc: Services): void {
         const tw = WIDE ? LW : GAME_W - 120;
         kk.g.rect(tx, y - 18, tw, 36, C.dark, 0.88 * a, 4);
         kk.g.frame(tx, y - 18, tw, 36, toast.color, 2, a, 4);
-        kk.g.text(toast.text, tx + tw / 2, y, { size: 15, color: toast.color, anchor: "center", opacity: a });
+        kk.g.text(toast.text, tx + tw / 2, y, { size: 15, color: toast.color, anchor: "center", opacity: a, width: tw - 16, align: "center", maxLines: 1 });
       },
     });
     const { root } = kit;
@@ -165,13 +165,13 @@ export function registerShop(svc: Services): void {
       if (!save.spend(cost)) {
         root.sfx("ui_deny");
         creditFlash = 0.5;
-        say(`NEED ${fmtNum(cost - save.data.credits)} MORE CREDITS`, C.red);
+        say(tr("common.needMoreCredits", { n: fmtNum(cost - save.data.credits) }), C.red);
         return false;
       }
       apply();
       save.save();
       root.sfx("ui_buy");
-      say(`${what} ACQUIRED`, C.green);
+      say(tr("shop.acquired", { what }), C.green);
       return true;
     };
 
@@ -220,8 +220,12 @@ export function registerShop(svc: Services): void {
           const ac = save.data.selectedAircraft;
           return {
             title: t.label,
-            kind: "CATEGORY",
-            lines: [t.desc, `ACTIVE: ${ac.toUpperCase()} - ${equippedSkin(save.data, ac).toUpperCase()} SCHEME`, `${act()} OR ${kit.mode() === "pad" ? "LB/RB" : "Q/E"} TO SWITCH`],
+            kind: tr("shop.category"),
+            lines: [
+              t.desc,
+              tr("shop.activeScheme", { aircraft: aircraftName(ac), skin: skinName(equippedSkin(save.data, ac)) }),
+              tr("shop.toSwitch", { act: act(), keys: kit.mode() === "pad" ? "LB/RB" : "Q/E" }),
+            ],
             accent: C.cyan,
             preview: (g, cx, cy, tt) => drawSkinnedAircraft(g, svc.sprites, ac, equippedSkin(save.data, ac), cx, cy + Math.sin(tt * 2) * 4, 4),
           };
@@ -238,7 +242,7 @@ export function registerShop(svc: Services): void {
           y: BOTTOM_Y,
           w: WIDE ? cCat!.w : 140,
           h: BOTTOM_H,
-          label: "BACK",
+          label: tr("common.back"),
           onClick: () => root.goBack(),
           sfx: false,
           accent: C.cyan,
@@ -252,7 +256,7 @@ export function registerShop(svc: Services): void {
           y: BOTTOM_Y,
           w: WIDE ? GAME_W - M - LX : GAME_W - 192,
           h: BOTTOM_H,
-          label: "TO CHAPTERS",
+          label: tr("shop.toChapters"),
           size: 18,
           onClick: () => k.go(SCENES.chapters),
         }),
@@ -277,10 +281,10 @@ export function registerShop(svc: Services): void {
             const lv = save.data.upgrades[u.id] ?? 0;
             if (lv >= u.maxLevel) {
               root.sfx("ui_deny");
-              say("ALREADY MAXED", C.grey);
+              say(tr("shop.alreadyMaxed"), C.grey);
               return;
             }
-            buy(shopCost(u, lv), `${u.name} LV${lv + 1}`, () => {
+            buy(shopCost(u, lv), tr("shop.upgradeLevelName", { name: upgradeName(u.id, u.name), n: lv + 1 }), () => {
               save.data.upgrades[u.id] = lv + 1;
             });
           },
@@ -292,17 +296,18 @@ export function registerShop(svc: Services): void {
           const cost = shopCost(u, lv);
           const credits = save.data.credits;
           return {
-            title: u.name,
-            kind: "UPGRADE",
+            title: upgradeName(u.id, u.name),
+            kind: tr("shop.upgrade"),
             accent: C.amber,
             lines: [
-              u.desc,
-              `LEVEL ${lv}/${u.maxLevel}  NOW ${upgradeEffect(u, lv)}`,
-              maxed ? "FULLY UPGRADED" : `NEXT ${upgradeEffect(u, lv + 1)}`,
-              maxed ? "" : credits >= cost ? `${act()} TO BUY` : `NEED ${fmtNum(cost - credits)} MORE CR`,
+              upgradeDesc(u.id, u.desc),
+              tr("shop.levelNow", { n: lv, max: u.maxLevel, effect: upgradeEffect(u, lv) }),
+              maxed ? tr("shop.fullyUpgraded") : tr("shop.nextEffect", { effect: upgradeEffect(u, lv + 1) }),
+              maxed ? "" : credits >= cost ? tr("common.toBuy", { act: act() }) : tr("common.needMoreCr", { n: fmtNum(cost - credits) }),
             ].filter(Boolean),
             cost: maxed ? undefined : cost,
-            state: maxed ? "MAX" : undefined,
+            state: maxed ? tr("common.max") : undefined,
+            bad: !maxed && credits < cost,
             preview: (g, cx, cy) => {
               const n = u.maxLevel;
               const s = 22;
@@ -335,10 +340,10 @@ export function registerShop(svc: Services): void {
           activate: () => {
             if (owned(wd)) {
               root.sfx("ui_move");
-              say(`${wd.name} READY - SWAP IN FLIGHT`, C.cyan);
+              say(tr("shop.weaponReady", { name: weaponName(wd.id, wd.name) }), C.cyan);
               return;
             }
-            buy(wd.unlockCost, wd.name, () => {
+            buy(wd.unlockCost, weaponName(wd.id, wd.name), () => {
               if (wd.kind === "air") save.data.unlockedAir.push(wd.id as AirWeaponId);
               else save.data.unlockedGround.push(wd.id as GroundWeaponId);
             });
@@ -348,18 +353,22 @@ export function registerShop(svc: Services): void {
         info.set(w.id, () => {
           const own = owned(wd);
           const credits = save.data.credits;
-          const lines = [wd.desc, `${wd.kind === "air" ? "AIR TO AIR" : "AIR TO GROUND"}  RATE ${wd.fireRate}/S  DMG ${wd.damage}`];
-          if (wd.ammoCost) lines.push(`USES ${wd.ammoCost} ORDNANCE PER SHOT`);
-          const swap = kit.mode() === "pad" ? (wd.kind === "air" ? "LB" : "LT") : kit.mode() === "kb" ? (wd.kind === "air" ? "Q/E" : "R") : "WPN/ORD";
-          lines.push(own ? `OWNED - SWAP IN FLIGHT (${swap})` : credits >= wd.unlockCost ? `${act()} TO UNLOCK` : `NEED ${fmtNum(wd.unlockCost - credits)} MORE CR`);
+          const lines = [
+            weaponDesc(wd.id, wd.desc),
+            tr("shop.weaponStats", { kind: wd.kind === "air" ? tr("shop.airToAir") : tr("shop.airToGround"), rate: String(wd.fireRate), dmg: String(wd.damage) }),
+          ];
+          if (wd.ammoCost) lines.push(tr("shop.usesOrdnance", { n: wd.ammoCost }));
+          const swap = kit.mode() === "pad" ? (wd.kind === "air" ? "LB" : "LT") : kit.mode() === "kb" ? (wd.kind === "air" ? "Q/E" : "R") : tr("shop.swapTouch");
+          lines.push(own ? tr("shop.ownedSwap", { keys: swap }) : credits >= wd.unlockCost ? tr("common.toUnlock", { act: act() }) : tr("common.needMoreCr", { n: fmtNum(wd.unlockCost - credits) }));
           const col = wd.kind === "air" ? C.cyan : C.amber;
           return {
-            title: wd.name,
-            kind: wd.kind === "air" ? "PRIMARY" : "ORDNANCE",
+            title: weaponName(wd.id, wd.name),
+            kind: wd.kind === "air" ? tr("shop.primary") : tr("shop.ordnance"),
             accent: col,
             lines,
             cost: own ? undefined : wd.unlockCost,
-            state: own ? "OWNED" : undefined,
+            state: own ? tr("common.owned") : undefined,
+            bad: !own && credits < wd.unlockCost,
             preview: (g, cx, cy) => {
               g.ring(cx, cy, 52, col, 1, 0.4);
               weaponIcon(g, wd.id, cx, cy, 72, svc.sprites, own ? col : C.grey);
@@ -396,7 +405,7 @@ export function registerShop(svc: Services): void {
               save.data.selectedAircraft === a.id,
               save.data.credits,
               svc,
-              kit.mode() === "touch" ? "TAP TO SELECT" : kit.mode() === "pad" ? "A TO SELECT" : "CLICK TO SELECT",
+              kit.mode() === "touch" ? tr("shop.tapToSelect") : kit.mode() === "pad" ? tr("shop.aToSelect") : tr("shop.clickToSelect"),
               equippedSkin(save.data, a.id),
             ),
           tooltip: tip("ac_" + a.id),
@@ -407,11 +416,11 @@ export function registerShop(svc: Services): void {
                 skinAc = a.id;
                 save.save();
                 root.sfx("ui_select");
-                say(`${a.name} SELECTED`, C.cyan);
+                say(tr("shop.aircraftSelected", { name: aircraftName(a.id, a.name) }), C.cyan);
               }
               return;
             }
-            buy(a.unlockCost, a.name, () => {
+            buy(a.unlockCost, aircraftName(a.id, a.name), () => {
               save.data.unlockedAircraft.push(a.id);
               save.data.selectedAircraft = a.id;
               skinAc = a.id;
@@ -424,17 +433,24 @@ export function registerShop(svc: Services): void {
           const selected = save.data.selectedAircraft === a.id;
           const credits = save.data.credits;
           return {
-            title: a.name,
-            kind: "AIRCRAFT",
+            title: aircraftName(a.id, a.name),
+            kind: tr("shop.aircraft"),
             accent: selected ? C.amber : C.cyan,
             lines: [
-              a.desc,
-              `SPEED x${a.speed}  HULL x${a.hp}  SHIELD x${a.shield}`,
-              `FIRE RATE x${a.fireRate}  ORDNANCE ${a.bombs}  HITBOX ${a.hitRadius}`,
-              selected ? "SELECTED FOR NEXT SORTIE" : owned ? `${act()} TO SELECT` : credits >= a.unlockCost ? `${act()} TO BUY` : `NEED ${fmtNum(a.unlockCost - credits)} MORE CR`,
+              aircraftDesc(a.id, a.desc),
+              tr("shop.aircraftStats1", { speed: String(a.speed), hull: String(a.hp), shield: String(a.shield) }),
+              tr("shop.aircraftStats2", { rate: String(a.fireRate), bombs: String(a.bombs), hitbox: String(a.hitRadius) }),
+              selected
+                ? tr("shop.selectedNextSortie")
+                : owned
+                  ? tr("common.toSelect", { act: act() })
+                  : credits >= a.unlockCost
+                    ? tr("common.toBuy", { act: act() })
+                    : tr("common.needMoreCr", { n: fmtNum(a.unlockCost - credits) }),
             ],
             cost: owned ? undefined : a.unlockCost,
-            state: selected ? "SELECTED" : owned ? "OWNED" : undefined,
+            state: selected ? tr("common.selected") : owned ? tr("common.owned") : undefined,
+            bad: !owned && credits < a.unlockCost,
             preview: (g, cx, cy, t) => {
               g.ring(cx, cy, 70, C.cyanDim, 1, 0.5);
               g.ring(cx, cy, 46, C.cyanDim, 1, 0.3);
@@ -453,29 +469,32 @@ export function registerShop(svc: Services): void {
       const eq = equippedSkin(save.data, skinAc) === def.id;
       const lockCh = skinLockedBy(save.data, def);
       const credits = save.data.credits;
-      const acName = skinAc.toUpperCase();
-      const lines = [def.desc];
-      if (def.unlockChapter) lines.push(`REQUIRES ${chapterLabel(def.unlockChapter)} CLEARED`);
+      const acName = aircraftName(skinAc);
+      const lines = [skinDesc(def.id, def.desc)];
+      if (def.unlockChapter) lines.push(tr("shop.requiresCleared", { chapter: chapterLabel(def.unlockChapter) }));
+      const bad = !eq && acOwned(skinAc) && !own && (!!lockCh || credits < def.cost);
       lines.push(
         eq
-          ? `EQUIPPED ON ${acName}`
+          ? tr("shop.equippedOn", { aircraft: acName })
           : !acOwned(skinAc)
-            ? `${acName} NOT OWNED YET`
+            ? tr("shop.aircraftNotOwnedYet", { aircraft: acName })
             : own
-              ? `${act()} TO EQUIP ON ${acName}`
+              ? tr("shop.toEquipOn", { act: act(), aircraft: acName })
               : lockCh
-                ? `LOCKED - CLEAR ${chapterLabel(lockCh)}`
+                ? tr("shop.lockedClear", { chapter: chapterLabel(lockCh) })
                 : credits >= def.cost
-                  ? `${act()} TO BUY + EQUIP`
-                  : `NEED ${fmtNum(def.cost - credits)} MORE CR`,
+                  ? tr("shop.toBuyEquip", { act: act() })
+                  : tr("common.needMoreCr", { n: fmtNum(def.cost - credits) }),
       );
       return {
-        title: def.name,
-        kind: "PAINT SCHEME",
+        title: skinName(def.id, def.name),
+        kind: tr("shop.paintScheme"),
         accent: SKIN_SWATCH[def.id],
         lines,
         cost: own ? undefined : def.cost,
-        state: eq ? "EQUIPPED" : own ? "OWNED" : lockCh ? "LOCKED" : undefined,
+        state: eq ? tr("common.equipped") : own ? tr("common.owned") : lockCh ? tr("common.locked") : undefined,
+        stateLocked: !!lockCh && !own && !eq,
+        bad,
         preview: (g, cx, cy, t) => {
           g.ring(cx, cy, 70, SKIN_SWATCH[def.id], 1, 0.35);
           drawSkinnedAircraft(g, svc.sprites, skinAc, def.id, cx, cy + Math.sin(t * 2) * 4, 4, lockCh && !own ? 0.55 : 1);
@@ -491,9 +510,9 @@ export function registerShop(svc: Services): void {
       g.ring(x + 80, y + h / 2, 48, SKIN_SWATCH[stageSkin], 1, 0.4);
       drawSkinnedAircraft(g, svc.sprites, skinAc, stageSkin, x + 80, y + h / 2 + Math.sin(t * 2) * 3, 3);
       const def = skinDefs.find((s) => s.id === stageSkin)!;
-      g.text(def.name, x + 150, y + 22, { size: 18, color: C.white, outline: -1 });
-      g.text(`ON ${skinAc.toUpperCase()}`, x + 150, y + 46, { size: 11, color: C.cyan });
-      g.text(esc(def.desc), x + 150, y + 66, { size: 10, color: C.text, width: w - 166, maxLines: 2, lineSpacing: 1 });
+      g.text(skinName(def.id, def.name), x + 150, y + 18, { size: 18, color: C.white, outline: -1 });
+      g.text(tr("shop.onAircraft", { aircraft: aircraftName(skinAc) }), x + 150, y + 46, { size: 11, color: C.cyan });
+      g.text(esc(skinDesc(def.id, def.desc)), x + 150, y + 66, { size: 10, color: C.text, width: w - 166, maxLines: 2, lineSpacing: 1 });
     };
     const buildSkins = (ws: Widget[]) => {
       // aircraft picker
@@ -507,7 +526,7 @@ export function registerShop(svc: Services): void {
             y: LIST_Y,
             w: pw,
             h: 44,
-            label: id.toUpperCase(),
+            label: aircraftName(id),
             size: 13,
             sfx: false,
             accent: C.cyan,
@@ -524,10 +543,10 @@ export function registerShop(svc: Services): void {
           }),
         );
         info.set(wid, () => ({
-          title: id.toUpperCase(),
-          kind: "PREVIEW AIRCRAFT",
+          title: aircraftName(id),
+          kind: tr("shop.previewAircraft"),
           accent: C.cyan,
-          lines: [acOwned(id) ? `EQUIPPED: ${equippedSkin(save.data, id).toUpperCase()}` : "NOT OWNED - PREVIEW ONLY", `${act()} TO SHOW SKINS ON THIS AIRCRAFT`],
+          lines: [acOwned(id) ? tr("shop.equippedSkin", { skin: skinName(equippedSkin(save.data, id)) }) : tr("shop.notOwnedPreview"), tr("shop.toShowSkins", { act: act() })],
           preview: (g, cx, cy, t) => drawSkinnedAircraft(g, svc.sprites, id, equippedSkin(save.data, id), cx, cy + Math.sin(t * 2) * 4, 4),
         }));
       });
@@ -547,7 +566,7 @@ export function registerShop(svc: Services): void {
             const own = ownsSkin(save.data, def.id);
             const lockCh = skinLockedBy(save.data, def);
             if (own) {
-              if (!acOwned(skinAc)) return deny(`${skinAc.toUpperCase()} NOT OWNED`);
+              if (!acOwned(skinAc)) return deny(tr("shop.aircraftNotOwned", { aircraft: aircraftName(skinAc) }));
               if (equippedSkin(save.data, skinAc) === def.id) {
                 root.sfx("ui_move");
                 return;
@@ -555,11 +574,11 @@ export function registerShop(svc: Services): void {
               save.data.selectedSkin[skinAc] = def.id;
               save.save();
               root.sfx("ui_select");
-              say(`${def.name} ON ${skinAc.toUpperCase()}`, C.cyan);
+              say(tr("shop.skinOn", { skin: skinName(def.id, def.name), aircraft: aircraftName(skinAc) }), C.cyan);
               return;
             }
-            if (lockCh) return deny(`CLEAR ${chapterLabel(lockCh)} FIRST`);
-            buy(def.cost, `${def.name} SCHEME`, () => {
+            if (lockCh) return deny(tr("shop.clearFirst", { chapter: chapterLabel(lockCh) }));
+            buy(def.cost, tr("shop.skinScheme", { skin: skinName(def.id, def.name) }), () => {
               if (!save.data.unlockedSkins.includes(def.id)) save.data.unlockedSkins.push(def.id);
               if (acOwned(skinAc)) save.data.selectedSkin[skinAc] = def.id;
             });
@@ -581,14 +600,14 @@ export function registerShop(svc: Services): void {
       g.circle(pcx, pcy, w.h / 2 - 6, C.dark, 0.7);
       drawSkinnedAircraft(g, svc.sprites, skinAc, def.id, pcx, pcy, w.h >= 60 ? 1.6 : 1.4, lockCh ? 0.5 : 1);
       g.rect(w.x + 72, w.y + 12, 10, w.h - 24, sw, 1, 2);
-      g.text(def.name, w.x + 94, w.y + (WIDE ? 14 : 10), { size: WIDE ? 16 : 14, color: lockCh ? C.grey : s.focus || s.hover ? C.white : C.text, outline: -1 });
-      g.text(esc(def.desc), w.x + 94, w.y + (WIDE ? 38 : 30), { size: 10, color: C.text, width: w.w - 220, maxLines: WIDE ? 2 : 1, lineSpacing: 1 });
+      g.text(skinName(def.id, def.name), w.x + 94, w.y + (WIDE ? 12 : 8), { size: WIDE ? 16 : 14, color: lockCh ? C.grey : s.focus || s.hover ? C.white : C.text, outline: -1 });
+      g.text(esc(skinDesc(def.id, def.desc)), w.x + 94, w.y + (WIDE ? 38 : 30), { size: 10, color: C.text, width: w.w - 220, maxLines: WIDE ? 2 : 1, lineSpacing: 1 });
       const rx = w.x + w.w - 12;
-      if (eq) g.text("EQUIPPED", rx - 50, pcy, { size: 12, color: C.amber, anchor: "center" });
-      else if (own) g.text("OWNED", rx - 46, pcy, { size: 12, color: C.green, anchor: "center" });
+      if (eq) g.text(tr("common.equipped"), rx - 50, pcy, { size: 12, color: C.amber, anchor: "center" });
+      else if (own) g.text(tr("common.owned"), rx - 46, pcy, { size: 12, color: C.green, anchor: "center" });
       else if (lockCh) {
         g.lock(rx - 76, pcy, 16, C.grey);
-        g.text(`CH ${CHAPTER_IDS.indexOf(lockCh) + 1}`, rx - 36, pcy, { size: 12, color: C.grey, anchor: "center" });
+        g.text(tr("common.chapterShortSpaced", { n: CHAPTER_IDS.indexOf(lockCh) + 1 }), rx - 36, pcy, { size: 12, color: C.grey, anchor: "center" });
       } else costTag(g, rx, pcy, def.cost, save.data.credits);
     };
 
@@ -596,14 +615,14 @@ export function registerShop(svc: Services): void {
     const drawDetails = (g: Gfx, x: number, y: number, w: number, h: number) => {
       const f = focused();
       const acc = f?.accent ?? C.cyan;
-      g.panel(x, y, w, h, { title: f?.kind ?? "DETAILS", accent: acc });
+      g.panel(x, y, w, h, { title: f?.kind ?? tr("shop.details"), accent: acc });
       if (!f) {
-        g.text("Hover or select an item.", x + 20, y + 30, { size: 13, color: C.grey });
+        g.text(tr("shop.hoverSelect"), x + 20, y + 30, { size: 13, color: C.grey });
         return;
       }
       const t = svc.k.time();
       g.text(esc(f.title), x + 22, y + 26, { size: 24, color: C.white, outline: -1, width: w - 44 });
-      if (f.state) g.text(f.state, x + w - 22, y + 30, { size: 13, color: f.state === "LOCKED" ? C.grey : C.green, anchor: "topright" });
+      if (f.state) g.text(f.state, x + w - 22, y + 30, { size: 13, color: f.stateLocked ? C.grey : C.green, anchor: "topright" });
       // preview stage
       const sy = y + 70;
       const sh = Math.min(200, h * 0.36);
@@ -615,7 +634,7 @@ export function registerShop(svc: Services): void {
       let ly = sy + sh + 20;
       f.lines.forEach((l, i) => {
         const last = i === f.lines.length - 1;
-        const col = last ? (l.startsWith("NEED") || l.startsWith("LOCKED") ? C.red : C.amber) : i === 0 ? C.text : C.cyan;
+        const col = last ? (f.bad ? C.red : C.amber) : i === 0 ? C.text : C.cyan;
         ly += g.text(esc(l), x + 22, ly, { size: i === 0 ? 14 : 12, color: i === 0 ? C.white : col, width: w - 44, lineSpacing: 3 }) + (i === 0 ? 12 : 6);
       });
       if (f.cost !== undefined) {
@@ -623,8 +642,8 @@ export function registerShop(svc: Services): void {
         const by = y + h - 60;
         g.rect(x + 16, by, w - 32, 44, ok ? C.amberDim : C.dark, 0.85, 3);
         g.frame(x + 16, by, w - 32, 44, ok ? C.amber : C.steel, 1, 1, 3);
-        g.text("PRICE", x + 30, by + 22, { size: 11, color: ok ? C.white : C.grey, anchor: "left" });
-        g.text(`${fmtNum(f.cost)} CR`, x + w - 30, by + 22, { size: 20, color: ok ? C.white : C.grey, anchor: "right" });
+        g.text(tr("shop.price"), x + 30, by + 22, { size: 11, color: ok ? C.white : C.grey, anchor: "left" });
+        g.text(tr("common.creditsShort", { n: fmtNum(f.cost) }), x + w - 30, by + 22, { size: 20, color: ok ? C.white : C.grey, anchor: "right" });
       }
     };
 
@@ -635,7 +654,7 @@ export function registerShop(svc: Services): void {
 function chapterLabel(id: string): string {
   const i = CHAPTER_IDS.indexOf(id as (typeof CHAPTER_IDS)[number]);
   if (i < 0) return id.toUpperCase();
-  return `CH ${i + 1} ${chapterInfo(CHAPTER_IDS[i]!).subtitle.toUpperCase()}`;
+  return tr("shop.chapterReq", { n: i + 1, operation: chapterInfo(CHAPTER_IDS[i]!).subtitle.toUpperCase() });
 }
 
 function rowFrame(g: Gfx, s: WState, w: Widget, accent: RGB, dim = false): void {
@@ -654,22 +673,24 @@ function costTag(g: Gfx, x: number, y: number, cost: number, credits: number): v
 
 function drawUpgrade(g: Gfx, s: WState, w: Widget, u: UpgradeDef, lv: number, credits: number): void {
   rowFrame(g, s, w, C.amber);
-  g.text(u.name, w.x + 16, w.y + (WIDE ? 12 : 8), { size: 16, color: s.focus || s.hover ? C.white : C.text, outline: -1 });
-  const nameW = g.measure(u.name, 16, true);
+  const uname = upgradeName(u.id, u.name);
+  const udesc = upgradeDesc(u.id, u.desc);
+  g.text(uname, w.x + 16, w.y + (WIDE ? 10 : 6), { size: 16, color: s.focus || s.hover ? C.white : C.text, outline: -1 });
+  const nameW = g.measure(uname, 16, true);
   if (WIDE) {
-    g.text(esc(u.desc), w.x + 16, w.y + 34, { size: 10, color: C.grey, width: w.w - 140, maxLines: 1 });
+    g.text(esc(udesc), w.x + 16, w.y + 34, { size: 10, color: C.grey, width: w.w - 140, maxLines: 1 });
     g.pips(w.x + 16, w.y + w.h - 22, u.maxLevel, lv, 12, C.amber, 4);
-    g.text(`LV ${lv}/${u.maxLevel}`, w.x + 16 + u.maxLevel * 16 + 8, w.y + w.h - 22, { size: 11, color: C.cyan });
+    g.text(tr("shop.lvOf", { n: lv, max: u.maxLevel }), w.x + 16 + u.maxLevel * 16 + 8, w.y + w.h - 22, { size: 11, color: C.cyan });
   } else {
     // portrait: level pips beside the name, the description gets two full lines below
     const px = w.x + 16 + Math.max(84, nameW + 12);
     const ty = w.y + 8 + readableSize(16) / 2;
     g.pips(px, ty - 5, u.maxLevel, lv, 10, C.amber, 3);
     g.text(`${lv}/${u.maxLevel}`, px + u.maxLevel * 13 + 6, ty, { size: 11, color: C.cyan, anchor: "left" });
-    g.text(esc(u.desc), w.x + 16, w.y + 12 + readableSize(16), { size: 10, color: C.text, width: w.w - 136, maxLines: 2, lineSpacing: 1 });
+    g.text(esc(udesc), w.x + 16, w.y + 12 + readableSize(16), { size: 10, color: C.text, width: w.w - 136, maxLines: 2, lineSpacing: 1 });
   }
-  if (WIDE && lv < u.maxLevel) g.text(`NEXT ${upgradeEffect(u, lv + 1)}`, w.x + w.w - 120, w.y + w.h - 22, { size: 10, color: C.green, anchor: "topright" });
-  if (lv >= u.maxLevel) g.text("MAX", w.x + w.w - 56, w.y + w.h / 2, { size: 18, color: C.green, anchor: "center" });
+  if (WIDE && lv < u.maxLevel) g.text(tr("shop.nextEffect", { effect: upgradeEffect(u, lv + 1) }), w.x + w.w - 120, w.y + w.h - 22, { size: 10, color: C.green, anchor: "topright" });
+  if (lv >= u.maxLevel) g.text(tr("common.max"), w.x + w.w - 56, w.y + w.h / 2, { size: 18, color: C.green, anchor: "center" });
   else costTag(g, w.x + w.w - 12, w.y + w.h / 2, shopCost(u, lv), credits);
 }
 
@@ -677,9 +698,9 @@ function drawWeapon(g: Gfx, s: WState, w: Widget, wd: PlayerWeaponDef, owned: bo
   rowFrame(g, s, w, wd.kind === "air" ? C.cyan : C.amber);
   g.rect(w.x + 10, w.y + 9, 44, 44, C.dark, 0.8, 3);
   weaponIcon(g, wd.id, w.x + 32, w.y + 31, 30, svc.sprites, owned ? (wd.kind === "air" ? C.cyan : C.amber) : C.grey);
-  g.text(esc(wd.name), w.x + 66, w.y + 10, { size: 15, color: owned ? C.white : C.text, outline: -1 });
-  g.text(esc(wd.desc), w.x + 66, w.y + 12 + readableSize(15), { size: 10, color: C.text, width: w.w - 180, maxLines: 2, lineSpacing: 1 });
-  if (owned) g.text("OWNED", w.x + w.w - 56, w.y + w.h / 2, { size: 14, color: C.green, anchor: "center" });
+  g.text(esc(weaponName(wd.id, wd.name)), w.x + 66, w.y + 8, { size: 15, color: owned ? C.white : C.text, outline: -1 });
+  g.text(esc(weaponDesc(wd.id, wd.desc)), w.x + 66, w.y + 12 + readableSize(15), { size: 10, color: C.text, width: w.w - 180, maxLines: isFa() ? 1 : 2, lineSpacing: 1 });
+  if (owned) g.text(tr("common.owned"), w.x + w.w - 56, w.y + w.h / 2, { size: 14, color: C.green, anchor: "center" });
   else costTag(g, w.x + w.w - 12, w.y + w.h / 2, wd.unlockCost, credits);
 }
 
@@ -693,16 +714,16 @@ function drawAircraft(g: Gfx, s: WState, w: Widget, a: AircraftDef, owned: boole
   g.ring(px, py, 34, C.cyanDim, 1, 0.35);
   const bob = Math.sin(s.t * 2 + a.id.length) * 3;
   drawSkinnedAircraft(g, svc.sprites, a.id, skin, px, py + bob, 3, owned ? 1 : 0.6);
-  g.text(a.name, px, w.y + 150, { size: 16, color: owned ? C.white : C.grey, anchor: "center", outline: -1 });
+  g.text(aircraftName(a.id, a.name), px, w.y + 150, { size: 16, color: owned ? C.white : C.grey, anchor: "center", outline: -1 });
 
   const sx = w.x + 140;
-  g.text(esc(a.desc), sx, w.y + 12, { size: 10, color: C.text, width: w.w - 156, maxLines: 2, lineSpacing: 1 });
+  g.text(esc(aircraftDesc(a.id, a.desc)), sx, w.y + 12, { size: 10, color: C.text, width: w.w - 156, maxLines: isFa() ? 1 : 2, lineSpacing: 1 });
   const stats: Array<[string, number]> = [
-    ["SPEED", a.speed / 1.4],
-    ["ARMOR", a.hp / 1.6],
-    ["SHIELD", a.shield / 1.6],
-    ["FIRE", a.fireRate / 1.25],
-    ["ORDNANCE", a.bombs / 8],
+    [tr("shop.stat.speed"), a.speed / 1.4],
+    [tr("shop.stat.armor"), a.hp / 1.6],
+    [tr("shop.stat.shield"), a.shield / 1.6],
+    [tr("shop.stat.fire"), a.fireRate / 1.25],
+    [tr("shop.stat.ordnance"), a.bombs / 8],
   ];
   stats.forEach(([n, v], i) => {
     const ry = w.y + 46 + i * 20;
@@ -710,7 +731,7 @@ function drawAircraft(g: Gfx, s: WState, w: Widget, a: AircraftDef, owned: boole
     g.bar(sx + 80, ry, w.w - 236, 11, v, i === 0 ? C.cyan : i < 3 ? C.green : C.amber, { segments: 10 });
   });
   const by = w.y + w.h - 26;
-  if (selected) g.text("SELECTED", w.x + w.w - 60, by, { size: 14, color: C.amber, anchor: "center" });
+  if (selected) g.text(tr("common.selected"), w.x + w.w - 60, by, { size: 14, color: C.amber, anchor: "center" });
   else if (owned) g.text(selectHint, w.x + w.w - 80, by, { size: 11, color: C.cyan, anchor: "center" });
   else costTag(g, w.x + w.w - 12, by, a.unlockCost, credits);
 }

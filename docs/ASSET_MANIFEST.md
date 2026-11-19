@@ -12,6 +12,7 @@ Runtime source of truth: `public/assets/manifest.json` (type `AssetManifest`, pl
 - `*_gun` overlays (turrets, tanks, boss turrets) point **down** at angle 0, pivot = sprite centre, matching the renderer's `angleToPlayer - 90`.
 - Bullets point **up** at angle 0 (renderer uses `angle + 90`). `bullet_player_laser` / `ebullet_laser` tile vertically.
 - FX frames are chosen by progress (0..1 over life), so fps there is only a hint.
+- Enemy animation extras (scripts/art/gen_anim.mjs; selection rules in docs/ANIM_SPEC.md): `enemy_<id>_bankl|_bankr` (air, same frames as base), `enemy_<id>_dmg` (all, < 50 % HP) and `_bankl_dmg|_bankr_dmg`, `enemy_<id>_gun` = 3-frame state strip [rest, fire+recoil, return], `enemy_<id>_burn` 3-frame burning wreck, `debris_s|m|l` (4 variants, fps 0), `fx_muzzle_e|_l` (enemy muzzle flash, points down, muzzle = top-centre).
 - Ground units have a burnt `enemy_<id>_dead` wreck. Tiles are seamless 64x64 (_a/_b share a 6px edge ring). Animated water/grating tiles are calm 4-frame loops: static body, only a few soft crests/glints fade in, drift 1px/frame and fade out (about 1% of pixels change per frame; nothing flickers tile-wide). The citadel trace pulse steps 16px/frame in muted colours.
 - Fonts (KAPLAY bitmap fonts, loaded from the manifest `fonts` array by src/assets/loader.ts; the old `font` block is kept for compatibility):
   - `sr_font` = `assets/sr_font.png`: original pixel font (scripts/art/gen_font.mjs), design cell 7x11 (5px glyphs, cap height 8, x-height 6, 2px descenders, true lowercase), white glyph + 1px dark outline. Tint with `color`.
@@ -132,15 +133,15 @@ Runtime source of truth: `public/assets/manifest.json` (type `AssetManifest`, pl
 | key | frame | frames | fps |
 |---|---|---|---|
 | `enemy_tank_light` | 16x16 | 4 | 10 |
-| `enemy_tank_light_gun` | 16x16 | 1 | - |
+| `enemy_tank_light_gun` | 16x16 | 3 | 0 |
 | `enemy_tank_heavy` | 24x24 | 4 | 7 |
-| `enemy_tank_heavy_gun` | 24x24 | 1 | - |
+| `enemy_tank_heavy_gun` | 24x24 | 3 | 0 |
 | `enemy_sam_site` | 20x20 | 1 | - |
 | `enemy_sand_crawler` | 20x24 | 4 | 12 |
 | `enemy_ice_walker` | 24x24 | 4 | 5 |
-| `enemy_ice_walker_gun` | 24x24 | 1 | - |
+| `enemy_ice_walker_gun` | 24x24 | 3 | 0 |
 | `enemy_aa_turret` | 16x16 | 1 | - |
-| `enemy_aa_turret_gun` | 16x16 | 1 | - |
+| `enemy_aa_turret_gun` | 16x16 | 3 | 0 |
 | `enemy_missile_launcher` | 20x20 | 2 | 3 |
 | `enemy_radar_station` | 24x24 | 8 | 8 |
 | `enemy_military_base` | 48x48 | 2 | 2 |
@@ -150,9 +151,9 @@ Runtime source of truth: `public/assets/manifest.json` (type `AssetManifest`, pl
 | `enemy_oil_tank` | 28x28 | 1 | - |
 | `enemy_hangar` | 48x32 | 2 | 2 |
 | `enemy_ice_turret` | 16x16 | 1 | - |
-| `enemy_ice_turret_gun` | 16x16 | 1 | - |
+| `enemy_ice_turret_gun` | 16x16 | 3 | 0 |
 | `enemy_citadel_turret` | 20x20 | 1 | - |
-| `enemy_citadel_turret_gun` | 20x20 | 1 | - |
+| `enemy_citadel_turret_gun` | 20x20 | 3 | 0 |
 
 ## wrecks
 
@@ -174,6 +175,94 @@ Runtime source of truth: `public/assets/manifest.json` (type `AssetManifest`, pl
 | `enemy_hangar_dead` | 48x32 | 1 | - |
 | `enemy_ice_turret_dead` | 16x16 | 1 | - |
 | `enemy_citadel_turret_dead` | 20x20 | 1 | - |
+
+## enemy_anim
+
+| key | frame | frames | fps |
+|---|---|---|---|
+| `enemy_mine_layer_bankl` | 28x28 | 4 | 16 |
+| `enemy_mine_layer_bankr` | 28x28 | 4 | 16 |
+| `enemy_fighter_basic_bankl` | 20x20 | 4 | 14 |
+| `enemy_fighter_basic_bankr` | 20x20 | 4 | 14 |
+| `enemy_interceptor_bankl` | 16x24 | 4 | 16 |
+| `enemy_interceptor_bankr` | 16x24 | 4 | 16 |
+| `enemy_fighter_heavy_bankl` | 32x32 | 4 | 12 |
+| `enemy_fighter_heavy_bankr` | 32x32 | 4 | 12 |
+| `enemy_bomber_bankl` | 40x32 | 4 | 16 |
+| `enemy_bomber_bankr` | 40x32 | 4 | 16 |
+| `enemy_drone_kamikaze_bankl` | 12x12 | 4 | 10 |
+| `enemy_drone_kamikaze_bankr` | 12x12 | 4 | 10 |
+| `enemy_missile_carrier_bankl` | 40x40 | 8 | 6 |
+| `enemy_missile_carrier_bankr` | 40x40 | 8 | 6 |
+| `enemy_helicopter_bankl` | 32x32 | 6 | 20 |
+| `enemy_helicopter_bankr` | 32x32 | 6 | 20 |
+| `enemy_gunship_light_bankl` | 28x32 | 6 | 22 |
+| `enemy_gunship_light_bankr` | 28x32 | 6 | 22 |
+| `enemy_mine_layer_dmg` | 28x28 | 4 | 16 |
+| `enemy_fighter_basic_dmg` | 20x20 | 4 | 14 |
+| `enemy_interceptor_dmg` | 16x24 | 4 | 16 |
+| `enemy_fighter_heavy_dmg` | 32x32 | 4 | 12 |
+| `enemy_bomber_dmg` | 40x32 | 4 | 16 |
+| `enemy_drone_kamikaze_dmg` | 12x12 | 4 | 10 |
+| `enemy_missile_carrier_dmg` | 40x40 | 8 | 6 |
+| `enemy_helicopter_dmg` | 32x32 | 6 | 20 |
+| `enemy_gunship_light_dmg` | 28x32 | 6 | 22 |
+| `enemy_shield_drone_dmg` | 16x16 | 4 | 8 |
+| `enemy_tank_light_dmg` | 16x16 | 4 | 10 |
+| `enemy_tank_heavy_dmg` | 24x24 | 4 | 7 |
+| `enemy_sam_site_dmg` | 20x20 | 1 | - |
+| `enemy_sand_crawler_dmg` | 20x24 | 4 | 12 |
+| `enemy_ice_walker_dmg` | 24x24 | 4 | 5 |
+| `enemy_aa_turret_dmg` | 16x16 | 1 | - |
+| `enemy_missile_launcher_dmg` | 20x20 | 2 | 3 |
+| `enemy_radar_station_dmg` | 24x24 | 8 | 8 |
+| `enemy_military_base_dmg` | 48x48 | 2 | 2 |
+| `enemy_armored_vehicle_dmg` | 16x24 | 4 | 10 |
+| `enemy_gunboat_dmg` | 16x32 | 4 | 8 |
+| `enemy_destroyer_dmg` | 24x64 | 4 | 6 |
+| `enemy_oil_tank_dmg` | 28x28 | 1 | - |
+| `enemy_hangar_dmg` | 48x32 | 2 | 2 |
+| `enemy_ice_turret_dmg` | 16x16 | 1 | - |
+| `enemy_citadel_turret_dmg` | 20x20 | 1 | - |
+| `enemy_mine_layer_bankl_dmg` | 28x28 | 4 | 16 |
+| `enemy_mine_layer_bankr_dmg` | 28x28 | 4 | 16 |
+| `enemy_fighter_basic_bankl_dmg` | 20x20 | 4 | 14 |
+| `enemy_fighter_basic_bankr_dmg` | 20x20 | 4 | 14 |
+| `enemy_interceptor_bankl_dmg` | 16x24 | 4 | 16 |
+| `enemy_interceptor_bankr_dmg` | 16x24 | 4 | 16 |
+| `enemy_fighter_heavy_bankl_dmg` | 32x32 | 4 | 12 |
+| `enemy_fighter_heavy_bankr_dmg` | 32x32 | 4 | 12 |
+| `enemy_bomber_bankl_dmg` | 40x32 | 4 | 16 |
+| `enemy_bomber_bankr_dmg` | 40x32 | 4 | 16 |
+| `enemy_drone_kamikaze_bankl_dmg` | 12x12 | 4 | 10 |
+| `enemy_drone_kamikaze_bankr_dmg` | 12x12 | 4 | 10 |
+| `enemy_missile_carrier_bankl_dmg` | 40x40 | 8 | 6 |
+| `enemy_missile_carrier_bankr_dmg` | 40x40 | 8 | 6 |
+| `enemy_helicopter_bankl_dmg` | 32x32 | 6 | 20 |
+| `enemy_helicopter_bankr_dmg` | 32x32 | 6 | 20 |
+| `enemy_gunship_light_bankl_dmg` | 28x32 | 6 | 22 |
+| `enemy_gunship_light_bankr_dmg` | 28x32 | 6 | 22 |
+| `enemy_tank_light_burn` | 16x16 | 3 | 10 |
+| `enemy_tank_heavy_burn` | 24x24 | 3 | 10 |
+| `enemy_sam_site_burn` | 20x20 | 3 | 10 |
+| `enemy_sand_crawler_burn` | 20x24 | 3 | 10 |
+| `enemy_ice_walker_burn` | 24x24 | 3 | 10 |
+| `enemy_aa_turret_burn` | 16x16 | 3 | 10 |
+| `enemy_missile_launcher_burn` | 20x20 | 3 | 10 |
+| `enemy_radar_station_burn` | 24x24 | 3 | 10 |
+| `enemy_military_base_burn` | 48x48 | 3 | 10 |
+| `enemy_armored_vehicle_burn` | 16x24 | 3 | 10 |
+| `enemy_gunboat_burn` | 16x32 | 3 | 10 |
+| `enemy_destroyer_burn` | 24x64 | 3 | 10 |
+| `enemy_oil_tank_burn` | 28x28 | 3 | 10 |
+| `enemy_hangar_burn` | 48x32 | 3 | 10 |
+| `enemy_ice_turret_burn` | 16x16 | 3 | 10 |
+| `enemy_citadel_turret_burn` | 20x20 | 3 | 10 |
+| `debris_s` | 6x6 | 4 | 0 |
+| `debris_m` | 8x8 | 4 | 0 |
+| `debris_l` | 12x12 | 4 | 0 |
+| `fx_muzzle_e` | 8x8 | 3 | 30 |
+| `fx_muzzle_e_l` | 12x12 | 3 | 30 |
 
 ## boss
 

@@ -1,16 +1,17 @@
 /**
  * Renderer: ONE draw pass for the whole game scene.
  * Order: background back -> ground enemies (+vulnerability brackets) -> air shadows -> air enemies -> pickups ->
- *        bullets -> player -> fx -> hazard telegraphs -> background front -> HUD (+ flash overlay).
+ *        score popups -> bullets -> player -> fx -> hazard telegraphs -> background front -> HUD (+ flash overlay).
  * Sprites (svc.sprites.has) are drawn at integer PIXEL_SCALE; everything falls back to colored shapes.
  * Draw option objects are reused to keep GC pressure low.
  */
-import type { KAPLAYCtx, Color, DrawRectOpt, DrawCircleOpt, DrawSpriteOpt, DrawTextOpt, Vec2 } from "kaplay";
+import type { KAPLAYCtx, Color, DrawRectOpt, DrawPolygonOpt, DrawSpriteOpt, DrawTextOpt, FormattedText, Vec2 } from "kaplay";
 import { GAME_H, GAME_W, PIXEL_SCALE, type HudRenderer, type Services, type SpriteInfo } from "../contracts";
+import { ANIM_QA, BURN_SECS, DMG_FRAC, FLASH_SECS, gunFrame, muzzleFrame } from "./anim";
 import { FXDEF } from "./fxdefs";
 import { pickupKey } from "./spritekeys";
 import type { Bullet, EnemyRT, Fx, Hazard, Pickup } from "./types";
-import type { World } from "./world";
+import { WORLD_TUNING, type ScorePopup, type World } from "./world";
 
 const PI = Math.PI;
 
@@ -31,6 +32,20 @@ let flashShaderCtx: KAPLAYCtx | null = null;
 
 const PICKUP_LETTER: Record<string, string> = { coin: "$", power: "P", bomb: "B", repair: "+", shield: "S", rapid: "R", overdrive: "O", magnet: "M" };
 
+/**
+ * Circle tessellation levels (segments). KAPLAY 3001's drawCircle always builds 46 points, and its stroked variant draws
+ * a line quad plus a 45-triangle "join" circle for EVERY segment (~2.3k vertices, ~10k short-lived objects per ring;
+ * docs/PERF_BOMBERS.md). Discs and rings here are drawn with ONE drawPolygon each from cached unit-circle points.
+ */
+const SEG_LEVELS = [10, 16, 24, 32] as const;
+function segLevel(r: number): number {
+  return r < 6 ? 0 : r < 16 ? 1 : r < 48 ? 2 : 3;
+}
+
+/** score popup fade / near-player dimming */
+const POPUP_NEAR = 70;
+const POPUP_NEAR_ALPHA = 0.3;
+
 export class Renderer {
   private k: KAPLAYCtx;
   private svc: Services;
@@ -41,11 +56,20 @@ export class Renderer {
   private pv: Vec2;
   private so: DrawSpriteOpt;
   private ro: DrawRectOpt;
-  private co: DrawCircleOpt;
-  /** reused outline-circle (ring) and text options */
-  private ringOutline: { width: number; color: Color };
-  private rgo: DrawCircleOpt;
+  /** cached unit-circle cos/sin tables and per-level point buffers (mutated in place, never reallocated) */
+  private unitCos: Float32Array[] = [];
+  private unitSin: Float32Array[] = [];
+  private discPts: Vec2[][] = [];
+  private ringPts: Vec2[][] = [];
+  private ringIdx: number[][] = [];
+  /** reused polygon options for discs (fan triangulation) and rings (annulus with cached indices) */
+  private dpo: DrawPolygonOpt;
+  private rpo: DrawPolygonOpt;
   private to: DrawTextOpt;
+  /** score popups: resolved font + shadow fallback flag */
+  private popupFont: string | undefined = undefined;
+  private popupShadow = false;
+  private popupFontResolved = false;
   /** playerKey cache: recomputed only when aircraft / skin change */
   private pkAircraft = "";
   private pkSkin = "";
@@ -68,9 +92,34 @@ export class Renderer {
     this.BLACK = k.rgb(0, 0, 0);
     this.so = { sprite: "", pos: this.pv, anchor: "center", frame: 0, scale: PIXEL_SCALE, angle: 0, opacity: 1, color: this.WHITE };
     this.ro = { pos: this.pv, width: 1, height: 1, anchor: "center", color: this.WHITE, opacity: 1, angle: 0 };
-    this.co = { pos: this.pv, radius: 1, color: this.WHITE, opacity: 1 };
-    this.ringOutline = { width: 1, color: this.WHITE };
-    this.rgo = { pos: this.pv, radius: 1, fill: false, outline: this.ringOutline, opacity: 1 };
+    for (let l = 0; l < SEG_LEVELS.length; l++) {
+      const n = SEG_LEVELS[l]!;
+      const c = new Float32Array(n);
+      const sn = new Float32Array(n);
+      const dp: Vec2[] = [];
+      const rp: Vec2[] = [];
+      const idx: number[] = [];
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * PI * 2;
+        c[i] = Math.cos(a);
+        sn[i] = Math.sin(a);
+        dp.push(k.vec2(0, 0));
+        rp.push(k.vec2(0, 0), k.vec2(0, 0));
+        // annulus: outer 2i, inner 2i+1; two triangles per segment
+        const o0 = 2 * i;
+        const i0 = 2 * i + 1;
+        const o1 = (2 * (i + 1)) % (2 * n);
+        const i1 = o1 + 1;
+        idx.push(o0, i0, o1, i0, i1, o1);
+      }
+      this.unitCos.push(c);
+      this.unitSin.push(sn);
+      this.discPts.push(dp);
+      this.ringPts.push(rp);
+      this.ringIdx.push(idx);
+    }
+    this.dpo = { pts: this.discPts[0]!, pos: this.pv, color: this.WHITE, opacity: 1 };
+    this.rpo = { pts: this.ringPts[0]!, indices: this.ringIdx[0]!, pos: this.pv, color: this.WHITE, opacity: 1 };
     this.to = { text: "", pos: this.pv, size: 12, anchor: "center", color: this.WHITE, opacity: 1 };
     if (flashShaderCtx === k) this.flashShaderReady = true;
     else {
@@ -181,27 +230,57 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     this.k.drawRect(o);
   }
 
+  /** filled circle: one drawPolygon (fan) from cached points; small circles use fewer segments */
   private circ(x: number, y: number, r: number, c: Color, opacity = 1): void {
-    const o = this.co;
+    if (r <= 0 || opacity <= 0) return;
+    const l = segLevel(r);
+    const cs = this.unitCos[l]!;
+    const sn = this.unitSin[l]!;
+    const pts = this.discPts[l]!;
+    for (let i = 0; i < pts.length; i++) {
+      const v = pts[i]!;
+      v.x = cs[i]! * r;
+      v.y = sn[i]! * r;
+    }
+    const o = this.dpo;
     this.pv.x = x;
     this.pv.y = y;
-    o.radius = r;
+    o.pts = pts;
     o.color = c;
     o.opacity = opacity;
-    o.fill = true;
-    o.outline = undefined;
-    this.k.drawCircle(o);
+    this.k.drawPolygon(o);
   }
 
+  /**
+   * Stroked circle: ONE drawPolygon of an annulus (cached points + cached indices), no KAPLAY line joins.
+   * (KAPLAY's drawCircle({fill:false, outline}) cost ~0.55 ms + ~10k objects per ring: docs/PERF_BOMBERS.md.)
+   */
   private ring(x: number, y: number, r: number, width: number, c: Color, opacity = 1): void {
-    const o = this.rgo;
+    if (r <= 0 || opacity <= 0 || width <= 0) return;
+    const l = segLevel(r);
+    const cs = this.unitCos[l]!;
+    const sn = this.unitSin[l]!;
+    const pts = this.ringPts[l]!;
+    const ro = r + width * 0.5;
+    const ri = Math.max(0, r - width * 0.5);
+    for (let i = 0; i < cs.length; i++) {
+      const ox = cs[i]!;
+      const oy = sn[i]!;
+      const a = pts[2 * i]!;
+      const b = pts[2 * i + 1]!;
+      a.x = ox * ro;
+      a.y = oy * ro;
+      b.x = ox * ri;
+      b.y = oy * ri;
+    }
+    const o = this.rpo;
     this.pv.x = x;
     this.pv.y = y;
-    o.radius = r;
+    o.pts = pts;
+    o.indices = this.ringIdx[l]!;
+    o.color = c;
     o.opacity = opacity;
-    this.ringOutline.width = width;
-    this.ringOutline.color = c;
-    this.k.drawCircle(o);
+    this.k.drawPolygon(o);
   }
 
   private text(t: string, x: number, y: number, size: number, c: Color, opacity = 1): void {
@@ -242,9 +321,10 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     this.drawFx(true);
     for (let i = 0; i < en.length; i++) {
       const e = en[i]!;
-      if (e.alive && e.def.layer === "air") this.drawShadow(e.keys.base, e);
+      if (e.alive && e.def.layer === "air") this.drawShadow(this.bodyKey(e), e);
     }
     this.drawPlayerShadow();
+    this.drawSpinouts();
     for (let i = 0; i < en.length; i++) {
       const e = en[i]!;
       if (e.alive && e.def.layer === "air") this.drawEnemy(e);
@@ -254,6 +334,7 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
       if (e.alive && e.def.layer === "air") this.drawBrackets(e);
     }
     this.drawPickups();
+    this.drawPopups();
     this.drawLockTarget();
     this.drawBeam();
     this.drawBullets();
@@ -295,28 +376,31 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     if (!e.onScreen && (Math.abs(e.x - GAME_W / 2) > GAME_W || e.y < -200 || e.y > GAME_H + 200)) return;
     const def = e.def;
     const keys = e.keys;
-    let key = keys.base;
-    // optional banking art: `<key>_bankl` / `<key>_bankr` (same frame layout) while sliding sideways
-    if (e.bank < -0.45 || e.bank > 0.45) {
-      const bk = e.bank < 0 ? keys.bankL : keys.bankR;
-      if (this.info(bk)) key = bk;
-    }
+    const key = this.bodyKey(e);
     const info = this.info(key);
     const w = this.w;
     if (info) {
+      // bank / dmg strips have exactly the base frame count, so the base-driven e.frame indexes them directly
       const frame = info.frames > 1 ? e.frame % info.frames : 0;
       const ang = def.layer === "air" ? e.facing - 90 : 0;
       if (e.flash > 0) this.sprFlash(key, e.x, e.y, frame, PIXEL_SCALE, ang);
       else this.spr(key, e.x, e.y, frame, PIXEL_SCALE, ang, 1);
+      let muzAng = ang;
+      const anim = ANIM_QA.enabled;
       if (def.rotatesToPlayer) {
         const gk = keys.gun;
-        if (this.info(gk)) {
+        const gi = this.info(gk);
+        if (gi) {
           const p = w.pc.state;
           const a = p.alive ? (Math.atan2(p.y - e.y, p.x - e.x) * 180) / PI : e.facing;
-          if (e.flash > 0) this.sprFlash(gk, e.x, e.y, 0, PIXEL_SCALE, a - 90);
-          else this.spr(gk, e.x, e.y, 0, PIXEL_SCALE, a - 90, 1);
+          // `_gun` state strip: 0 rest, 1 fire (recoil), 2 return
+          const gf = anim && gi.frames >= 3 ? gunFrame(e.fireT) : 0;
+          if (e.flash > 0) this.sprFlash(gk, e.x, e.y, gf, PIXEL_SCALE, a - 90);
+          else this.spr(gk, e.x, e.y, gf, PIXEL_SCALE, a - 90, 1);
+          muzAng = a - 90;
         }
       }
+      if (anim && e.fireT < FLASH_SECS && keys.muzzle) this.drawMuzzle(e, muzAng, def.layer === "air" ? e.facing : 90);
       return;
     }
     // fallback
@@ -339,6 +423,52 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     if (e.maxHp >= 100 && e.hp < e.maxHp && !e.bossId) {
       this.rectTL(e.x - wdt / 2, e.y - hgt / 2 - 8, wdt, 3, this.col(20, 20, 20), 0.8);
       this.rectTL(e.x - wdt / 2, e.y - hgt / 2 - 8, wdt * Math.max(0, e.hp / e.maxHp), 3, this.col(220, 60, 60), 1);
+    }
+  }
+
+  /**
+   * Body sprite key (ANIM_SPEC §2): `_dmg` below 50 % HP, `_bankl` / `_bankr` (+ `_dmg`) while banking (hysteresis in
+   * e.bankSel). Every variant falls back to the next one when the registry lacks it. Cached keys only: no allocation.
+   */
+  private bodyKey(e: EnemyRT): string {
+    const keys = e.keys;
+    const damaged = e.hp < e.maxHp * DMG_FRAC && !e.bossId && ANIM_QA.enabled;
+    const hasDmg = damaged && this.info(keys.dmg) !== null;
+    let key = hasDmg ? keys.dmg : keys.base;
+    const s = e.bankSel;
+    if (s !== 0) {
+      const bk = s < 0 ? (damaged ? keys.bankLDmg : keys.bankL) : damaged ? keys.bankRDmg : keys.bankR;
+      if (this.info(bk)) key = bk;
+      else if (damaged && !hasDmg) {
+        const b2 = s < 0 ? keys.bankL : keys.bankR;
+        if (this.info(b2)) key = b2;
+      }
+    }
+    return key;
+  }
+
+  /**
+   * Enemy muzzle flash (ANIM_SPEC §3): `fx_muzzle_e(_l)` at each muzzle point, rotated with the body (or `_gun`
+   * overlay), pushed forward along the shot heading by half a flash frame. `aft` points when firing backwards.
+   */
+  private drawMuzzle(e: EnemyRT, ang: number, bodyFacing: number): void {
+    const m = e.keys.muzzle!;
+    const info = this.info(m.fx);
+    if (!info) return;
+    const fd = e.fireDir;
+    const fr = (fd * PI) / 180;
+    const pts = m.aft && Math.cos(fr - (bodyFacing * PI) / 180) < 0 ? m.aft : m.fore;
+    const rr = (ang * PI) / 180;
+    const c = Math.cos(rr);
+    const s = Math.sin(rr);
+    const push = (info.frameH * PIXEL_SCALE) / 2;
+    const px = Math.cos(fr) * push;
+    const py = Math.sin(fr) * push;
+    const frame = muzzleFrame(e.fireT);
+    for (let i = 0; i + 1 < pts.length; i += 2) {
+      const mx = pts[i]!;
+      const my = pts[i + 1]!;
+      this.spr(m.fx, e.x + (mx * c - my * s) * PIXEL_SCALE + px, e.y + (mx * s + my * c) * PIXEL_SCALE + py, frame, PIXEL_SCALE, fd - 90, 1);
     }
   }
 
@@ -594,9 +724,23 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     const list = this.w.fxPool.items;
     for (let i = 0; i < list.length; i++) {
       const f = list[i]!;
-      if (f.delay > 0) continue;
+      if (f.delay > 0 || f.kind === "spinout") continue;
       if ((f.kind === "wreck" || f.kind === "blast_ground") !== groundOnly) continue;
       this.drawOneFx(f);
+    }
+  }
+
+  /** dying aircraft: tumbling, shrinking body; drawn with the air layer so explosions / bullets stay on top */
+  private drawSpinouts(): void {
+    const list = this.w.fxPool.items;
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i]!;
+      if (f.kind !== "spinout" || f.delay > 0) continue;
+      const info = this.info(f.sprite);
+      if (!info) continue;
+      const p = f.t / f.life;
+      const frame = info.frames > 1 ? f.frame % info.frames : 0;
+      this.spr(f.sprite, f.x, f.y, frame, PIXEL_SCALE * (1 - 0.45 * p), f.rot, 1 - p * p);
     }
   }
 
@@ -604,11 +748,25 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     const p = f.t / f.life;
     const d = FXDEF[f.kind];
     if (f.kind === "wreck") {
-      const info = this.info(f.sprite);
       const a = f.life - f.t < 1 ? f.life - f.t : 1;
+      // burning strip (`_burn`, 3 @ 10 fps, per-wreck phase) for the first BURN_SECS, then the cold `_dead` decal
+      if (f.t < BURN_SECS && f.sprite2 !== "" && this.info(f.sprite2)) {
+        this.spr(f.sprite2, f.x, f.y, (((f.t * 10) | 0) + f.frame) % 3, PIXEL_SCALE, 0, a);
+        return;
+      }
+      const info = this.info(f.sprite);
       if (info) this.spr(f.sprite, f.x, f.y, 0, PIXEL_SCALE, 0, a);
       else this.rect(f.x, f.y, 24, 24, this.col(30, 30, 30), 0.7 * a);
       return;
+    }
+    if (f.kind === "debris" && f.sprite !== "") {
+      const di = this.info(f.sprite);
+      if (di) {
+        // chunk variant = frame; fade over the last 30 % of life
+        const q = p < 0.7 ? 0 : (p - 0.7) / 0.3;
+        this.spr(f.sprite, f.x, f.y, di.frames > 1 ? f.frame % di.frames : 0, PIXEL_SCALE, f.rot, 1 - q * q);
+        return;
+      }
     }
     const info = d.sprite ? this.info(d.sprite) : null;
     if (info) {
@@ -668,9 +826,16 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
   }
 
   // ------------------------------------------------------------------ hazards
+  /**
+   * Two passes so KAPLAY's batch switches texture once per frame instead of twice per hazard (docs/PERF_BOMBERS.md #3):
+   * every untextured shape first (discs + rings), then every fx_warning sprite.
+   */
   private drawHazards(): void {
     const list = this.w.hazards.items;
+    if (list.length === 0) return;
     const t = this.w.time;
+    const pulse = 0.55 + 0.35 * Math.sin(t * 18);
+    let warn = false;
     for (let i = 0; i < list.length; i++) {
       const h = list[i]!;
       const c = this.col(h.r, h.g, h.b);
@@ -678,13 +843,106 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
         const p = Math.min(1, h.t / h.telegraph);
         this.circ(h.x, h.y, h.radius, c, 0.1 + 0.14 * p);
         this.circ(h.x, h.y, h.radius * p, c, 0.22);
-        this.ring(h.x, h.y, h.radius, 2, c, 0.55 + 0.35 * Math.sin(t * 18));
-        if (this.info("fx_warning") && h.cls === "enemy") this.spr("fx_warning", h.x, h.y, 0, PIXEL_SCALE, 0, 0.9);
+        this.ring(h.x, h.y, h.radius, 2, c, pulse);
+        if (h.cls === "enemy") warn = true;
       } else {
         const p = h.blastT / 0.3;
         this.circ(h.x, h.y, h.radius * (0.7 + 0.3 * p), this.col(255, 240, 180), 0.55 * (1 - p));
         this.ring(h.x, h.y, h.radius, 3, c, 1 - p);
       }
+    }
+    if (!warn || !this.info("fx_warning")) return;
+    for (let i = 0; i < list.length; i++) {
+      const h = list[i]!;
+      if (h.state === 0 && h.cls === "enemy") this.spr("fx_warning", h.x, h.y, 0, PIXEL_SCALE, 0, 0.9);
+    }
+  }
+
+  // ------------------------------------------------------------------ score popups
+  /** sr_font_outline (baked outline + shadow) when loaded; else the plain font with a drawn drop shadow */
+  private resolvePopupFont(): void {
+    this.popupFontResolved = true;
+    const k = this.k as KAPLAYCtx & { getBitmapFont?: (n: string) => unknown };
+    try {
+      if (k.getBitmapFont?.("sr_font_outline")) {
+        this.popupFont = "sr_font_outline";
+        return;
+      }
+      if (k.getBitmapFont?.("sr_font")) this.popupFont = "sr_font";
+    } catch {
+      /* ignore */
+    }
+    this.popupShadow = true;
+  }
+
+  private popupColor(q: ScorePopup): Color {
+    if (q.big) return this.col(255, 214, 60);
+    const c = q.combo;
+    if (c >= 1.95) return this.col(255, 90, 200);
+    if (c >= 1.6) return this.col(255, 150, 60);
+    if (c >= 1.3) return this.col(255, 235, 90);
+    return this.col(235, 240, 255);
+  }
+
+  /** (re)format one popup's text: only when it spawns or merges, never per frame */
+  private formatPopup(q: ScorePopup): FormattedText | null {
+    let ft = q.cache as FormattedText | null;
+    try {
+      const opt: DrawTextOpt = ft ? ft.opt : { text: "", pos: this.k.vec2(0, 0), anchor: "center", size: 12 };
+      opt.text = "+" + q.value;
+      opt.size = q.big ? 20 : 12;
+      opt.font = this.popupFont;
+      opt.color = this.popupColor(q);
+      opt.opacity = 1;
+      ft = this.k.formatText(opt);
+    } catch {
+      ft = null;
+    }
+    q.cache = ft;
+    q.dirty = false;
+    return ft;
+  }
+
+  private drawPopups(): void {
+    const w = this.w;
+    if (w.settings.scorePopups === false) return;
+    const list = w.popups;
+    const rise = WORLD_TUNING.popups.rise;
+    const p = w.pc.state;
+    if (!this.popupFontResolved) this.resolvePopupFont();
+    for (let i = 0; i < list.length; i++) {
+      const q = list[i]!;
+      if (!q.active) continue;
+      const ft = q.dirty ? this.formatPopup(q) : (q.cache as FormattedText | null);
+      if (!ft) continue;
+      const u = Math.min(1, q.t / q.life);
+      // ease-out drift up, quick pop-in, fade over the last 60 %
+      const y = q.y - rise * (1 - (1 - u) * (1 - u));
+      let a = u < 0.4 ? 1 : 1 - (u - 0.4) / 0.6;
+      if (q.t < 0.06) a *= q.t / 0.06;
+      if (p.alive) {
+        const dx = q.x - p.x;
+        const dy = y - p.y;
+        if (dx * dx + dy * dy < POPUP_NEAR * POPUP_NEAR) a *= POPUP_NEAR_ALPHA;
+      }
+      if (a <= 0.01) continue;
+      const pos = ft.opt.pos as Vec2;
+      const chars = ft.chars;
+      if (this.popupShadow) {
+        pos.x = Math.round(q.x) + 1;
+        pos.y = Math.round(y) + 1;
+        for (let j = 0; j < chars.length; j++) {
+          chars[j]!.opacity = a * 0.8;
+          chars[j]!.color = this.BLACK;
+        }
+        this.k.drawFormattedText(ft);
+        const c = this.popupColor(q);
+        for (let j = 0; j < chars.length; j++) chars[j]!.color = c;
+      }
+      pos.x = Math.round(q.x);
+      pos.y = Math.round(y);
+      for (let j = 0; j < chars.length; j++) chars[j]!.opacity = a;
+      this.k.drawFormattedText(ft);
     }
   }
 

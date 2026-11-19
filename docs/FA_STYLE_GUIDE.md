@@ -59,3 +59,27 @@ Research notes:
 | Warning | هشدار | |
 | Back | برگشت | |
 | Volume / Music / Sound | صدا / موسیقی / افکت | |
+
+## Names and recurring terms used in fa.ts (round 5)
+| EN | FA | Note |
+|---|---|---|
+| Campaign | کمپین | «لشکرکشی» is literary/military-political |
+| Briefing / Debrief | شرح مأموریت / گزارش نبرد | «توجیه» alone means "justification" |
+| Sortie | پرواز | «سورتی» is jargon most players don't know |
+| Kills | انهدام | never «کشتن» / «قتل» |
+| Mission failed (in-game banner / results header) | باختی! / مأموریت ناموفق | |
+| Overdrive / Magnet / Rapid (HUD chips) | توان ویژه (توان) / آهنربا (جذب) / سریع | short forms in brackets |
+| Threat / Enraged (boss) | خطر / خشمگین | |
+| Arrow keys | جهت‌نماها | «جهت» alone is banned (bureaucratic «for»); the compound is fine |
+| Fire rate | سرعت شلیک | not «نرخ آتش» (double translation) |
+| Score popups | نمایش امتیاز | |
+| PACIFIC / JUNGLE / DESERT / ARCTIC / CITADEL | اقیانوس آرام / جنگل / صحرا / قطب شمال / ارگ | |
+| Ops: Tidebreak / Green Hell / Dust Devil / White Fang / Last Light | موج‌شکن / تله‌ی سبز / گردباد / نیش سفید / نور آخر | "Hell" dropped (religious word) |
+| Bosses | ناو لویاتان / بالگرد شاه‌زنبور / دژ زمینی سلطان شن / رزمناو یخی آرواره‌ی زمستان / هسته‌ی ارگ | «جبار» dropped (also a divine name) |
+| FALCON / RAPTOR / BULWARK | شاهین / شکاری / سنگر | |
+
+## Automated check
+`node tests/i18n/check.mjs` (add `--verbose` for the length table). It fails on missing/extra keys, placeholder
+mismatch, fa length > 1.35 × en + 4, the banned words of rules 2–5, the vulgar-word blocklist
+(`tests/i18n/blocklist.json`, base64), Latin letters outside key names / units / logo, ZWNJ at a word edge or «می »
+without ZWNJ, and Arabic «ي»/«ك». Run it after every change to `fa.ts`.
