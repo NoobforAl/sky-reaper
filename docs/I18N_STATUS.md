@@ -155,3 +155,45 @@ Things that stay Latin: key and button names (SPACE, Q/E, ESC, ENTER, D-PAD, LB/
 - Canvas text is rasterised at back-buffer density, which is at most 1× in this game (`renderDensity`). With `texFilter:"nearest"` it is crisp at 1:1 but not smoothed. If phones look rough, pass `resolution: 2` (costs 4× atlas space).
 - Objective texts in the chapter data have their numbers baked into English (`"Sink 6 ships"`). The keyed versions take `{n}` from `goal`.
 - The pluralisation is deliberately minimal (`one|other`).
+
+## 6. Missing keys (round 4 snapshot)
+
+Snapshot taken 2026-11-19 while round 4 agents were still editing, so re-grep before wiring. Method: every string literal
+in `src/**/*.ts` (excluding `src/i18n`, `src/contracts`, comments and `console.*`) that contains English words was
+compared with the values in `en.ts` (placeholders normalised). Nothing outside `src/i18n` and this file was changed.
+
+**Synced this round** (`en.ts` + `fa.ts`, Farsi lines tagged `// REVIEW: native speaker`):
+- `menu.touchHint` → `HOLD TO FLY + FIRE - LIFT TO STOP` (`src/ui/menu.ts` `controlsHint`)
+- `tutorial.move.touch` → `HOLD + DRAG ANYWHERE: FLY AND FIRE`
+- `tutorial.fire_air.touch` → `HOLD ANYWHERE: FLY + FIRE. GUNS HIT AIRCRAFT`
+- `tutorial.weapons.touch` → `SWAP ICONS CHANGE WEAPONS`
+- `tutorial.bomb_ground.touch`, `tutorial.flares.touch`, `tutorial.immune.touch` already matched `src/levels/tutorial.ts`.
+
+**User-visible strings with no key** (proposed key names in brackets):
+
+| Source | Strings | Proposed keys |
+|---|---|---|
+| `src/bosses/framework.ts:484,506` | `CORE EXPOSED` / `HIT THE WEAK POINT`, `ARMOUR CRACKING` / `FINISH IT` | `bossBanner.coreExposed(.sub)`, `bossBanner.armourCracking(.sub)` |
+| `src/bosses/citadel_core.ts:62-63` | `SHIELD GENERATORS DOWN`, `EMITTER DESTROYED` | `bossBanner.shieldGensDown`, `bossBanner.emitterDestroyed` |
+| `src/bosses/heli_gunship.ts:54,61,71` | `DRONES INBOUND`, `STRAFING RUN`, `TAIL ROTOR DOWN` / `IT'S SPINNING OUT` | `bossBanner.heli.*` |
+| `src/bosses/ice_dreadnought.ts:51,61` | `DRILL CHARGE` / `MOVE ASIDE`, `ENGINES DOWN` / `IT'S SLOWING` | `bossBanner.ice.*` |
+| `src/bosses/land_fortress.ts:59,72` | `RAMMING SPEED` / `GET CLEAR`, `FORTRESS IMMOBILISED` | `bossBanner.fortress.*` |
+| `src/levels/chapters/*.ts` `tl.banner(...)` intro | `OPERATION <NAME>` / `CHAPTER <n> - <NAME>` (5 chapters) | `banner.operation` = `OPERATION {name}` + `banner.chapterIntro` = `CHAPTER {n} - {name}`, or per-chapter `chapter.<id>.introTitle` |
+| `src/levels/chapters/pacific.ts:25,44,62,74,91` | `SURFACE CONTACTS` / `BOMBS SINK SHIPS`, `WAVE 2` / `ESCORT GROUP`, `WAVE 3` / `BOMBER RUN`, `WAVE 4` / `INTERCEPTORS`, `CARRIER GROUP AHEAD` / `CLEAR THE SCREEN` | `wave.pacific.*`; `WAVE {n}` → `banner.wave` |
+| `src/levels/chapters/jungle.ts:25,36,48,59,72,86` | `AMBUSH!` / `HELICOPTERS ON THE FLANKS`, `HIDDEN BASE` / `BOMB THE HANGARS`, `CONVOY` / `STOP THE SUPPLY TRUCKS`, `WAVE 3` / `BOMBER FORMATION`, `JUNGLE STRONGHOLD` / `BOMB THE BASES`, `WAVE 5` / `GUNSHIP ESCORT` | `wave.jungle.*` |
+| `src/levels/chapters/desert.ts:24,35,45,56,70,84` | `OIL FIELD` / `TANKS BURN BRIGHT`, `SANDSTORM` / `WATCH THE CROSSWIND`, `ARMOURED CONVOY`, `FORWARD AIRBASE` / `HIT THE HANGARS BEFORE THEY LAUNCH`, `SANDSTORM RAID` / `CONTACTS IN THE DUST`, `WAVE 6` / `ARMOUR SCREEN` | `wave.desert.*` |
+| `src/levels/chapters/arctic.ts:27,38,50,60,71,83` | `BLIZZARD` / `VISIBILITY DROPPING`, `ARMOURED TRAIN` / `DERAIL IT`, `DRONE MINEFIELD` / `SHOOT A PATH THROUGH`, `ICEBREAKER GROUP`, `WHITEOUT` / `HOLD YOUR LINE`, `POLAR OUTPOST` | `wave.arctic.*` |
+| `src/levels/chapters/citadel.ts:27,39,47,60,72,82` | `MISSILE GAUNTLET` / `FLARES READY`, `DRONE SWARM`, `FACTORY DISTRICT` / `BOMB THE PRODUCTION LINES`, `WAVE 6` / `HEAVY ESCORT`, `ARMOURED TRAIN`, `CITADEL WALLS` / `NO WAY BACK` | `wave.citadel.*` |
+| `src/ui/hud.ts:293-295` | `RPD`, `OVD`, `MAG` (narrow power-up chips) | `hud.rapidAbbr`, `hud.overdriveAbbr`, `hud.magnetAbbr` |
+| `src/ui/results.ts:161` | `BOMBS/FLARES` (narrow variant of `results.bombsFlares`) | `results.bombsFlaresShort` |
+| `src/ui/shop.ts:353` | `WPN/ORD` (touch swap hint) | `shop.swapTouch` (or compose from `touch.weapon` + `touch.ordnance`) |
+| `src/ui/settings.ts:79,93,102` | Sentence-case copies: `Changes apply instantly and are saved.`, `Click an action, then press a new key (Esc cancels). Amber = primary.`, `Select an action, then press a key. Esc cancels.` | Text drifted from `settings.subtitle` / `settings.keyHelpWide` / `settings.keyHelp` (which are upper-case and worded differently): update those values when wiring |
+| `src/ui/chapters.ts:159` | `BEST {score}   OBJ {done}/{total}` built as one template | Compose `chapters.bestScore` + `chapters.objCount` |
+| `src/ui/results.ts:15` | `AAA` default initials | Not translatable (initials stay Latin) |
+
+**Covered already / not translated on purpose**
+- Chapter objective texts with baked numbers (`Sink 6 ships`, ...) map to `objective.<id>` with `{n}`.
+- `v0.1  -  MIT` → `common.version`; `CAMPAIGN  -  5 OPERATIONS` → `chapters.subtitle`.
+- Key and button names (`ESC`, `ENTER`, `SPACE`, `SHIFT`, `WASD`, `ARROWS`, `D-PAD`, `WHEEL`, `src/input/keys.ts` labels) stay Latin per the glossary.
+- `src/ui/data.ts` fallback chapter text: only used when the level module is missing (see §2), shows `chapter.<id>.*` instead.
+- Not user-visible: `src/enemies/defs.ts` names/notes (only in the debug dump `src/enemies/index.ts:299`), `src/core/devdemo.ts` (dev-only content), `src/levels/sanity.ts` and `src/core/world.ts` error/log strings, `src/assets/music.ts` form tags, `src/net/leaderboard.ts` HTTP verbs.

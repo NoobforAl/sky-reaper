@@ -1,5 +1,96 @@
 # SKY REAPER: QA playtest and balance report
 
+## Round 4 re-verification (after the engine / enemy / level / ui / devops / audio-assets fix round)
+
+Date: 2026-11-19 · Build: fresh `vite build` of the current tree into a scratch dir, served by `vite preview --port 5310`. Same method, profiles, seeds and difficulty (normal) as the original report below: no-dodge s1, novice s1+s2, human s1+s2, expert s1 (70 runs), godMode boss pass (10 runs), and a real-time GPU FPS pass (10 chapter/layout cells). Raw JSON: `test-results/qa-round4/` (copied out so `playwright test` cannot wipe it). The "before" numbers are re-computed from the original round's JSON.
+
+**Gates:** `npx tsc --noEmit` clean · `npm run typecheck:worker` clean · `npx playwright test` **12/12 passed** (1.9 min) · 0 page/console errors in all 90 QA runs.
+
+**QA harness fix (tests/qa/bot.js):** round 3 made ordnance fire once per *press* (`bombPressed` only, no hold-repeat). The bot only produced a press on the rising edge of "target under the drop point", so a target that stayed there (boss treads, slow structures) got one bomb. The bot now re-taps every 20 sim steps (0.33 s) while the target stays under the drop point, like a player tapping the button. This change only affects the bot, not the game, and it doesn't weaken any check.
+
+### Before / after (normal difficulty)
+
+| metric | before (round 1) | after (round 4) | target | verdict |
+|---|---|---|---|---|
+| no-dodge bot | 10/10 wins, 3 deaths total | ch1–2 win (1 death, jungle wide); **ch3–5 game over 6/6** (t 76–183 s, 2–3 deaths each) | fails by ch2–3 | **met** (fails from ch3) |
+| novice bot (300 ms, 150u vision) | 20/20 wins, 0 deaths; damage ch3–5 0–90 | 20/20 wins, **1 death in 20 runs** (citadel wide s1); damage ch3–5 21–402 (median ≈ 100); hits taken 70 → 129 | loses 1–3 lives in ch3–5, usually clears | **not met** (clears, but almost never dies) |
+| human bot (200 ms) | 20/20, 0 deaths, damage ≤ 40 | 20/20, 0 deaths, damage ≤ 112 (hits 11 → 47) | – | pressure up ~4×, still 0 deaths |
+| expert bot | 20/20, 0 deaths | 10/10, 0 deaths, damage ≤ 88 | 0–1 deaths | **met** |
+| ACE medal | reached by **every** profile in every run (incl. no-dodge) | expert: 0/10 ACE (best is GOLD); ACE in 4 of 50 dodging wins, all novice: jungle wide ×2 (66.5k / 62.9k vs 61k), citadel wide s2 (116k vs 103.5k), citadel portrait s1 (125k vs 122k) | needs near-perfect play | **mostly met**; jungle-wide and citadel ACE still reachable by the novice bot |
+| boss time in real runs | 10–36 s (P3 often < 2 s) | **39–54 s** in most runs; long tail 71–81 s on wide when power is low (novice arctic wide 81 s at power 1, desert wide 71 s at power 2; expert arctic wide 72 s at power 2; human citadel wide 72 s at power 3) | 40–70 s | **met**, with a wide long tail |
+| boss pass (godMode) | 14–131 s; P3 0.6–1.9 s on portrait | **39–70 s** (portrait 39–47, wide 40–70); every phase ≥ 11.0 s | 40–70 s, phases ≥ 10 s | **met** |
+| unavoidable hits (dodging profiles) | 1 of 87 hits | 3 of 190 hits (all novice: desert ×2, arctic portrait ×1); expert 0 zero-escape samples in 144k | no unavoidable moments | **met** for expert/human; the novice "unavoidable" hits are the bot's 0.25 s look-ahead getting cornered, not provably unfair patterns |
+| chapter 1 (pacific) | novice dmg 8–57 | novice dmg 0–26, 0 deaths in every profile; no-dodge wins with 155–218 dmg | gentle | **met** |
+| enemy bullets max / avg (citadel wide) | 643 / 94–112 | 455–597 / 107–140 | – | denser, pool (1400) fine |
+| missiles | 2284 launched, 20 hits (0.9 %), max 150 u/s everywhere | max speed 150 (ch1) / 189 (desert) / 200 (ch4–5); dodging bots 5 hits / 2138 launched (0.2 %); no-dodge 23 / 265 (8.7 %) | scale by chapter, outrunnable | scaling **met**; still not a real threat to dodging players (bots have perfect bullet info + flares) |
+| power 5 at end of run | 60/60 dodging runs | 39/50 dodging runs; lower-power runs are the ones with long boss fights | power should matter | **improved** |
+| wide spawns (pacific / citadel) | 325 / 548 (≈1.7× portrait) | 247 / 420–426 (≈1.3×) | layout-independent objectives | **improved**; wide kill rate still 0.34–0.79 vs portrait 0.68–0.96 |
+| FPS (real time, Edge GPU, 75 Hz cap) | avg 66–75; one 1013 ms stall (desert wide boss) | avg **65–75** in every cell; min 1-s bucket 49 (arctic wide boss), worst frame 80 ms; desert-wide stall gone (75/75) | fine | **met** |
+
+### Issues from the original report
+
+| # | issue | status |
+|---|---|---|
+| 1 | no lethality | **partly resolved**: no-dodge now dies from ch3, but the novice target is not met (see R4-1) |
+| 2 | medals below a non-dodging score | **resolved** for no-dodge and expert; small residue in jungle wide and citadel (R4-3) |
+| 3 | bosses too short / phase 3 under 2 s | **resolved** (39–70 s boss pass, phases ≥ 11 s); new side-effect R4-2 |
+| 4 | wide over-spawn | **mostly resolved** (1.7× → 1.3×); copies are still counted in `spawned` / `killRate` (R4-5) |
+| 5 | unreachable objectives | pacific naval 4: met 6/10 dodging runs (was 0/12). desert ground 35: met 7/10. arctic vehicles 7: met 9/10. citadel structures 10: met 8/10. jungle killRate 0.6: portrait 5/5, wide 2/5. **jungle "2 bases or hangars": still 0/10 dodging jungle runs** (R4-4). arctic "≤ 3 flares": 0/10 (bot uses flares freely, accepted as before) |
+| 6 | tutorial bombs while empty | **resolved in data** (bomb pickups at 32.5 / 37 s, `immune` hint moved to 40.5 s); I didn't re-shoot the tutorial screenshots this round |
+| 7 | wide hint panel covers the enemy entry band | fixed per the UI report (bottom-centre plus fade); not re-screenshotted by QA |
+| 8 | portrait score/combo overlap | fixed per the UI report; not re-screenshotted by QA |
+| 9 | missiles don't scale | **resolved** (150 → 189 → 200 u/s by chapter, turn ≤ 110 °/s, decoyable) |
+| 10 | power maxes every run | **improved** (39/50 runs) |
+| 11 | economy | **resolved in data**: `creditScoreDivisorWin` 200, replay pays 25 % of the reward; laser 2600 / heavy 3000 / seeker 2000. First-clear credits per win: pacific ≈ 1.2–1.4k, citadel ≈ 3.1–3.5k |
+| 12 | pinch points | `HAZARD_LOCKOUT` 1.1 s added; expert and human saw 0 unavoidable hits |
+| 13 | performance | **resolved** (no stall) |
+
+### Remaining issues (round 4)
+
+**R4-1. The novice still almost never dies in ch3–5 (owner: engine, with enemy). Severity: medium (main balance gap).**
+- **Evidence:** 1 death in 12 novice runs of ch3–5. Novice damage per run is 21–107 in desert, 78–198 in arctic and 86–402 in citadel, against an effective life of 140 (100 hull + 40 shield) plus shield regen (4/s after 4 s).
+- **The gap is in the middle of the curve:** no-dodge takes 450–670 damage and dies, while novice takes ~100.
+- **Suggestion:** about 1.8–2× the damage a novice takes in ch3–5, without touching ch1–2:
+  - `src/core/world.ts` `WORLD_TUNING.chapterDmg` `[0.8, 1.05, 1.15, 1.25, 1.35]` → **`[0.8, 1.05, 1.4, 1.65, 1.9]`**.
+  - Optionally `BASE_SHIELD_REGEN` 4 → 3.
+  - Re-run `play --seeds=1,2 --replan=18 --novice` and stop once ch3–5 average 1–2 deaths.
+  - Don't overshoot: the bot sees every bullet in its 150u radius perfectly, so real novices will take more damage than it does. A short human playtest of ch4 is worth doing before going further.
+
+**R4-2. The boss phase gate makes phase 2 a wait (owner: level/bosses). Severity: low–medium (feel).**
+- **Evidence:** phase 2 lasts exactly 11.0 s in 43 of 50 dodging runs and 7 of 10 boss-pass runs. Phase 1 is often exactly 15.0 / 15.5 s.
+- **Cause:** the HP threshold is reached early, and the rig then sits invulnerable (pulsing rings) until `minPhaseSec`. With `phaseAt` [0.70, 0.45], phase 2 holds only 25 % of HP. At power 5 that is gone in a few seconds, so the player spends a large part of phase 2 shooting an immune rig.
+- **Suggestion** in `src/bosses/framework.ts`:
+  - Give phase 2 more HP: `phaseAt` → **[0.75, 0.42]**, or raise `hpSlope` slightly.
+  - Lower `minPhaseSec` to ~9.
+  - Log time spent gated per phase (an event or a counter on `hud()`) so QA can measure it. The target is under ~3 s of gate per phase.
+
+**R4-3. ACE can still be reached by the novice bot in jungle wide and citadel (owner: level). Severity: low.**
+- **Evidence:** novice jungle wide 66.5k / 62.9k against ACE 61k (while the expert scored 50.3k), citadel wide 116k against 103.5k, citadel portrait 125k against 122k.
+- **Cause:** score variance between seeds is ±20 %. The novice wins on score by surviving into more kills and combos.
+- **Suggestion** in `src/levels/chapters/*.ts`:
+  - jungle wide factor 0.95 → **1.1** (ACE ≈ 70k).
+  - citadel portrait ACE 122000 → **130000**, wide factor 0.85 → **0.95**.
+  - Alternatively, tie ACE to "0 deaths and score ≥ X" if medals should mean skill rather than score.
+
+**R4-4. Jungle objective "Destroy 2 bases or hangars" is still 0/10 (owner: level, enemy). Severity: low.**
+- **Evidence:** across all 70 runs (including citadel, which has 3 bases), `tagKills.base` is 0 everywhere except one no-dodge jungle run.
+- **The targets can be destroyed:** `tests/qa/probe-base.mjs` on this build shows hangar and military_base die to 3 bomb hits (160 / 180 hp).
+- **Why it fails:** the jungle bases sit at the lanes' edges (L+50 / R−60 at t 46 and 120). That matches the old "ordnance is the limit" finding, and the bot doesn't prioritise them.
+- **Suggestion:** move one jungle base or hangar pair toward LC/RC in `src/levels/chapters/jungle.ts` and add a `pickup("bomb")` 2 s before each pair. Or lower the goal to 1. Confirm with a manual run, since this bot doesn't lead or prioritise targets.
+
+**R4-5. Wide copies still count in `spawned` / `killRate` (owner: engine). Severity: low.**
+- **Status:** the level request in `docs/CONTRACT_REQUESTS.md` (`data.wideCopy`) is not implemented in `World.spawnEnemy`.
+- **Effect:** wide kill rate is 0.34–0.79 against 0.68–0.96 on portrait, and `jun_rate` 0.6 passes 2/5 on wide versus 5/5 on portrait.
+- **Fix:** add `&& o.data?.wideCopy !== true` to the `counted` condition, as requested.
+
+**R4-6. Missiles are still harmless to a dodging player (owner: enemy). Severity: low / informational.**
+- **Evidence:** 5 hits from 2138 missiles across the expert, human and novice profiles. The bot flares on every lock.
+- **Recommendation:** leave this as is until R4-1 is tuned, because missile damage scales with `chapterDmg` too. If more threat is wanted, use flare scarcity (flare cooldown) rather than missile speed, so the outrun guarantee holds.
+
+**Not re-verified by QA this round:** the tutorial, hint-panel and HUD screenshots (R6–R8; the UI fixer verified them with screenshots), and the worker/CORS changes (typecheck only; not exercised end to end).
+
+---
+
 Date: 2026-11-19 · Build: private snapshot (`vite build` into a scratch dir, served by `vite preview --port 5282`), taken at the start of the session while other agents were still editing. Difficulty **normal (1.0)**, fresh save (un-upgraded Falcon, vulcan + bomb only), **no godMode** except for the boss time-to-kill pass.
 
 All numbers below come from the scripts in `tests/qa/`. Raw data and screenshots are in `test-results/qa/`. `npx playwright test` empties `test-results/` when it starts, so if the folder is missing, re-run the scripts (commands at the end).

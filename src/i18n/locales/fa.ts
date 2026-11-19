@@ -74,7 +74,7 @@ export const fa: StringTable = {
   "menu.settings.sub": "صدا - بازی - کنترل‌ها",
   "menu.credits": "سازندگان",
   "menu.credits.sub": "رکوردها و قدردانی",
-  "menu.touchHint": "برای پرواز بکش - شلیک خودکار هنگام هدایت",
+  "menu.touchHint": "برای پرواز و شلیک نگه دار - برای توقف رها کن", // REVIEW: native speaker
   "menu.hiScore": "بالاترین امتیاز  {score}  {name}",
   "menu.pilotRecord": "کارنامه‌ی خلبان",
   "menu.schemeName": "طرح {skin}",
@@ -175,9 +175,9 @@ export const fa: StringTable = {
 
   // ------------------------------------------------------------------ tutorial hints
   "tutorial.move.key": "حرکت: WASD / کلیدهای جهت",
-  "tutorial.move.touch": "حرکت: هر جای صفحه را بکش",
+  "tutorial.move.touch": "هر جای صفحه را نگه دار و بکش: پرواز و شلیک", // REVIEW: native speaker
   "tutorial.fire_air.key": "SPACE / J را نگه دار: مسلسل به هواپیماها می‌خورد",
-  "tutorial.fire_air.touch": "شلیک را نگه دار: مسلسل به هواپیماها می‌خورد",
+  "tutorial.fire_air.touch": "هر جای صفحه را نگه دار: پرواز + شلیک. مسلسل به هواپیماها می‌خورد", // REVIEW: native speaker
   "tutorial.bomb_ground.key": "K را بزن: بمب به اهداف زمینی می‌خورد",
   "tutorial.bomb_ground.touch": "بمب را لمس کن: بمب به اهداف زمینی می‌خورد",
   "tutorial.legend.key": "قاب نارنجی = فقط بمب   سبز = مسلسل یا بمب",
@@ -189,7 +189,7 @@ export const fa: StringTable = {
   "tutorial.pickups.key": "P = قدرت   B = بمب   S = سپر",
   "tutorial.pickups.touch": "P = قدرت   B = بمب   S = سپر",
   "tutorial.weapons.key": "Q / E: تعویض مسلسل   R: تعویض مهمات",
-  "tutorial.weapons.touch": "دکمه‌های تعویض، سلاح را عوض می‌کنند",
+  "tutorial.weapons.touch": "آیکون‌های تعویض، سلاح را عوض می‌کنند", // REVIEW: native speaker
   "tutorial.shield.key": "سپر آبی وقتی ضربه نخوری پر می‌شود",
   "tutorial.shield.touch": "سپر آبی وقتی ضربه نخوری پر می‌شود",
   "tutorial.boss.key": "اول سلاح‌ها را نابود کن - هسته سپر دارد",

@@ -41,4 +41,9 @@
    bomber waves (heavy bomber, bomber formations, carpet-bomb patterns): bullet/fx counts, per-frame allocations,
    trail/smoke particle spawn rate, draw calls. Fix: cap particle trails, pool everything, batch draws, limit
    simultaneous bomber bullet emitters. Add a Playwright perf test for a bomber wave (FPS floor 50 on GPU).
-4. Farsi support: see docs/I18N_FARSI_PLAN.md (plan only; start after 1–3 unless the user says otherwise).
+4. Farsi support: APPROVED by the user. Plan in docs/I18N_FARSI_PLAN.md and style rules in docs/FA_STYLE_GUIDE.md.
+   Strings must be short, modern and game-like (no literary or classic register), with no awkward or vulgar literal
+   translations or transliterations. Logo stays Latin with a small Farsi subtitle.
+   Step A, after the i18n-hint-sync agent: rewrite fa.ts to the guide and add a tests/i18n check (length ratio, banned
+   formal words, transliteration blocklist).
+   Step B, after round 4: UI integration (t() everywhere, RTL rendering, language switch in Settings).
