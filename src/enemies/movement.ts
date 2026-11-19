@@ -25,12 +25,30 @@ export interface MoveState {
   lvy: number;
   /** horizontal direction for strafe/diagonal */
   sx: number;
+  /** cached formation leader (re-validated by id + alive every step; pool objects are recycled) */
+  leader: Enemy | null;
+}
+
+/** O(1) per step after the first lookup (CODE_REVIEW #17: was a find() per follower per step). */
+function formationLeader(s: MoveState, leaderId: number, world: WorldAPI): Enemy | undefined {
+  const c = s.leader;
+  if (c && c.id === leaderId && c.alive) return c;
+  s.leader = null;
+  const list = world.enemies;
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i]!;
+    if (o.id === leaderId && o.alive) {
+      s.leader = o;
+      return o;
+    }
+  }
+  return undefined;
 }
 
 export function moveState(e: Enemy): MoveState {
   let s = e.data.mv as MoveState | undefined;
   if (!s) {
-    s = { init: false, t: 0, x0: e.x, y0: e.y, stage: 0, stageT: 0, heading: 90, cx: e.x, cy: e.y, ang: 0, lockX: 0, lockY: 0, lvx: 0, lvy: 0, sx: 1 };
+    s = { init: false, t: 0, x0: e.x, y0: e.y, stage: 0, stageT: 0, heading: 90, cx: e.x, cy: e.y, ang: 0, lockX: 0, lockY: 0, lvx: 0, lvy: 0, sx: 1, leader: null };
     e.data.mv = s;
   }
   return s;
@@ -39,11 +57,17 @@ export function moveState(e: Enemy): MoveState {
 const dirOf = (e: Enemy): 1 | -1 => (e.opts?.dir === -1 ? -1 : 1);
 const phaseOf = (e: Enemy) => e.opts?.phase ?? 0;
 
-function turnToward(cur: number, target: number, maxStep: number): number {
-  let d = ((target - cur + 540) % 360) - 180;
+/** wrap an angle into [-180, 180) */
+export function normAngle(a: number): number {
+  return ((((a + 180) % 360) + 360) % 360) - 180;
+}
+
+/** step `cur` toward `target` by at most `maxStep` deg along the SHORT way; result normalised to [-180, 180) */
+export function turnToward(cur: number, target: number, maxStep: number): number {
+  let d = normAngle(target - cur);
   if (d > maxStep) d = maxStep;
   if (d < -maxStep) d = -maxStep;
-  return cur + d;
+  return normAngle(cur + d);
 }
 
 function apply(e: Enemy, nx: number, ny: number, dt: number) {
@@ -150,7 +174,7 @@ export function stepMovement(e: Enemy, m: MovementDef, dt: number, world: WorldA
     }
     case "formation": {
       const f = e.opts?.formation;
-      const leader = f ? world.enemies.find((o) => o.id === f.leaderId && o.alive) : undefined;
+      const leader = f && s.stage === 0 ? formationLeader(s, f.leaderId, world) : undefined;
       if (f && leader && leader !== e && s.stage === 0) {
         apply(e, leader.x + f.dx, leader.y + f.dy, dt);
         s.lvx = e.vx;

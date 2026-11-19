@@ -24,6 +24,8 @@ export class Pool<T> {
   /** swap-remove by index (changes order) */
   releaseAt(i: number): void {
     const items = this.items;
+    // a stale / out-of-range index must never pop a live object or push `undefined` onto the free list
+    if (i < 0 || i >= items.length) return;
     const o = items[i]!;
     const last = items.pop()!;
     if (i < items.length) items[i] = last;

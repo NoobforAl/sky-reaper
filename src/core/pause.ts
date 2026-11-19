@@ -1,8 +1,17 @@
-/** Simple pause overlay: Resume / Restart / Quit. Mouse, touch (touchToMouse) and keyboard. */
+/** Simple pause overlay: Resume / Restart / Quit. Mouse, touch (touchToMouse), keyboard and gamepad (input.menuPad()). */
 import type { KAPLAYCtx } from "kaplay";
 import { FONT, GAME_H, GAME_W } from "../contracts";
 
 export type PauseAction = "resume" | "restart" | "quit";
+
+/** edge-triggered menu buttons (subset of the input service's MenuPad) */
+export interface PausePad {
+  up?: boolean;
+  down?: boolean;
+  confirm?: boolean;
+  back?: boolean;
+  start?: boolean;
+}
 
 const ITEMS: Array<{ label: string; action: PauseAction }> = [
   { label: "RESUME", action: "resume" },
@@ -25,6 +34,8 @@ export class PauseMenu {
     private k: KAPLAYCtx,
     private onAction: (a: PauseAction) => void,
     private accent: string,
+    /** optional gamepad menu reader (svc.input.menuPad when the input service provides it) */
+    private pad?: () => PausePad | null,
   ) {}
 
   show(): void {
@@ -47,9 +58,18 @@ export class PauseMenu {
   /** call every frame while open */
   update(): void {
     const k = this.k;
-    if (k.isKeyPressed("up") || k.isKeyPressed("w")) this.sel = (this.sel + ITEMS.length - 1) % ITEMS.length;
-    if (k.isKeyPressed("down") || k.isKeyPressed("s")) this.sel = (this.sel + 1) % ITEMS.length;
-    if (k.isKeyPressed("enter") || k.isKeyPressed("space")) this.onAction(ITEMS[this.sel]!.action);
+    let mp: PausePad | null = null;
+    try {
+      mp = this.pad ? this.pad() : null;
+    } catch {
+      mp = null;
+    }
+    const opened = k.time() - this.openedAt >= 0.15;
+    if (k.isKeyPressed("up") || k.isKeyPressed("w") || mp?.up) this.sel = (this.sel + ITEMS.length - 1) % ITEMS.length;
+    if (k.isKeyPressed("down") || k.isKeyPressed("s") || mp?.down) this.sel = (this.sel + 1) % ITEMS.length;
+    if (!opened) return;
+    if (mp?.back || mp?.start) this.onAction("resume");
+    else if (k.isKeyPressed("enter") || k.isKeyPressed("space") || mp?.confirm) this.onAction(ITEMS[this.sel]!.action);
   }
 
   hover(x: number, y: number): void {
@@ -99,6 +119,8 @@ export class PauseMenu {
       });
       this.text(ITEMS[i]!.label, BTN_X, cy, 24, on ? [255, 255, 255] : [170, 180, 200]);
     }
-    this.text("ESC / P: resume    ARROWS + ENTER: select", GAME_W / 2, GAME_H - 60, 12, [140, 150, 170]);
+    // hint sits under the buttons (the HUD owns the bottom corners on wide screens)
+    this.text("ESC / P / START: resume", GAME_W / 2, BTN_Y0 + ITEMS.length * BTN_GAP + 6, 12, [140, 150, 170]);
+    this.text("ARROWS / D-PAD + ENTER / A: select", GAME_W / 2, BTN_Y0 + ITEMS.length * BTN_GAP + 26, 12, [140, 150, 170]);
   }
 }

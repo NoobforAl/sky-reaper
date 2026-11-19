@@ -2,7 +2,7 @@
  * Weapon-side types shared by src/weapons, src/player and src/core.
  * (Owned by the Engine agent. Not part of src/contracts.)
  */
-import type { AirWeaponId, AircraftDef, BulletSpawn, Enemy, GroundWeaponId, WorldAPI } from "../contracts";
+import type { AirWeaponId, AircraftDef, BulletSpawn, Enemy, GroundWeaponId, SkinId, WorldAPI } from "../contracts";
 
 /** Extra knobs only the engine understands (player projectiles). */
 export interface PlayerBulletSpawn extends BulletSpawn {
@@ -21,6 +21,8 @@ export interface PlayerBulletSpawn extends BulletSpawn {
 /** Effective player stats computed from save data (upgrades + aircraft + unlocks). */
 export interface Loadout {
   aircraft: AircraftDef;
+  /** paint scheme for the selected aircraft (owned + selected in the save; "standard" fallback) */
+  skin: SkinId;
   maxHp: number;
   maxShield: number;
   /** shield points regenerated per second once the delay has elapsed */

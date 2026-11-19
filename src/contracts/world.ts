@@ -4,7 +4,7 @@
  */
 import type { BulletSpawn, HazardSpawn } from "./combat";
 import type { Enemy, EnemySpawnOpts } from "./enemies";
-import type { AircraftId, AirWeaponId, GroundWeaponId, PickupKind } from "./consts";
+import type { AircraftId, AirWeaponId, GroundWeaponId, PickupKind, SkinId } from "./consts";
 import type { AudioService, SfxId } from "./assets";
 
 export interface PlayerState {
@@ -24,6 +24,8 @@ export interface PlayerState {
   airWeapon: AirWeaponId;
   groundWeapon: GroundWeaponId;
   aircraft: AircraftId;
+  /** paint scheme; sprite key `player_<aircraft>_<skin>` unless "standard" */
+  skin: SkinId;
   /** i-frames remaining (s) */
   invuln: number;
   /** flare/countermeasure cooldown remaining (s) */

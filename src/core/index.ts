@@ -9,7 +9,7 @@ import { levels } from "../levels";
 import { bosses } from "../bosses";
 import { createHud } from "../ui";
 import { composeEnemySystem, createDemoRunner, demoBosses } from "./devdemo";
-import { PauseMenu, type PauseAction } from "./pause";
+import { PauseMenu, type PauseAction, type PausePad } from "./pause";
 import { Renderer } from "./render";
 import { abortRun, finishRun } from "./results";
 import { World } from "./world";
@@ -77,6 +77,10 @@ export function registerGameScene(svc: Services): void {
         }
       },
       chapter.palette?.accent ?? "#ffcc33",
+      () => {
+        const mp = (svc.input as unknown as { menuPad?: () => PausePad }).menuPad;
+        return typeof mp === "function" ? mp.call(svc.input) : null;
+      },
     );
     function setPaused(v: boolean): void {
       if (v === paused || finished) return;

@@ -2,9 +2,43 @@
  * SKY REAPER - shared constants. OWNER: Orchestrator. Do not edit without Orchestrator approval.
  */
 
-/** Virtual (logical) resolution in game units. Origin top-left, +x right, +y DOWN. */
-export const GAME_W = 480;
+/**
+ * Virtual (logical) resolution in game units. Origin top-left, +x right, +y DOWN.
+ *
+ * GAME_H is fixed. GAME_W is chosen ONCE at module load:
+ *  - portrait / narrow windows (phones): DESIGN_W = 480  -> classic 480x854 portrait field
+ *  - landscape desktop windows: the playfield fills the screen width, GAME_W = 854 * aspect (480..MAX_GAME_W, even)
+ * Override for testing with the URL query `?layout=portrait` or `?layout=wide`.
+ * NEVER cache GAME_W-derived values in module-level code that runs before this module (it is always first) - fine as-is.
+ * Content (level event x, formation offsets) is AUTHORED in DESIGN_W space; the level runner maps it to GAME_W.
+ */
+export const DESIGN_W = 480;
 export const GAME_H = 854;
+export const MAX_GAME_W = 1520;
+/** minimum window width (CSS px) and aspect for the wide desktop layout */
+export const WIDE_MIN_PX = 900;
+export const WIDE_MIN_ASPECT = 1.05;
+
+function computeGameW(): number {
+  if (typeof window === "undefined") return DESIGN_W;
+  try {
+    const q = new URLSearchParams(window.location.search).get("layout");
+    const w = window.innerWidth || DESIGN_W;
+    const h = window.innerHeight || GAME_H;
+    const wantWide = q === "wide" ? true : q === "portrait" ? false : w >= WIDE_MIN_PX && w / h >= WIDE_MIN_ASPECT;
+    if (!wantWide) return DESIGN_W;
+    const raw = Math.round((GAME_H * Math.max(w / h, WIDE_MIN_ASPECT)) / 2) * 2;
+    return Math.min(MAX_GAME_W, Math.max(DESIGN_W, raw));
+  } catch {
+    return DESIGN_W;
+  }
+}
+
+export const GAME_W = computeGameW();
+/** true when the wide (desktop full-screen) playfield is active */
+export const WIDE = GAME_W > DESIGN_W;
+/** factor to map DESIGN_W-space x coordinates to the live playfield */
+export const X_SCALE = GAME_W / DESIGN_W;
 
 /**
  * Art is authored at native pixels and drawn at PIXEL_SCALE x so that one art-pixel == 2 game units.
@@ -44,6 +78,13 @@ export const BOSS_IDS = ["carrier", "heli_gunship", "land_fortress", "ice_dreadn
 /** Aircraft variants. */
 export const AIRCRAFT_IDS = ["falcon", "raptor", "bulwark"] as const;
 export type AircraftId = (typeof AIRCRAFT_IDS)[number];
+
+/**
+ * Aircraft skins (paint schemes). Sprite key: `player_<aircraft>_<skin>` (+ `_dmg`), same size/frames as
+ * `player_<aircraft>`. Skin "standard" = the plain `player_<aircraft>` sprite. Renderer falls back to standard.
+ */
+export const SKIN_IDS = ["standard", "arctic", "desert", "nightfall", "crimson", "tiger", "gold"] as const;
+export type SkinId = (typeof SKIN_IDS)[number];
 
 /** Player primary (air-to-air) weapons. */
 export const AIR_WEAPON_IDS = ["vulcan", "spread", "homing", "laser"] as const;

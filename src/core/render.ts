@@ -5,9 +5,10 @@
  * Sprites (svc.sprites.has) are drawn at integer PIXEL_SCALE; everything falls back to colored shapes.
  * Draw option objects are reused to keep GC pressure low.
  */
-import type { KAPLAYCtx, Color, DrawRectOpt, DrawCircleOpt, DrawSpriteOpt, Vec2 } from "kaplay";
+import type { KAPLAYCtx, Color, DrawRectOpt, DrawCircleOpt, DrawSpriteOpt, DrawTextOpt, Vec2 } from "kaplay";
 import { GAME_H, GAME_W, PIXEL_SCALE, type HudRenderer, type Services, type SpriteInfo } from "../contracts";
 import { FXDEF } from "./fxdefs";
+import { pickupKey } from "./spritekeys";
 import type { Bullet, EnemyRT, Fx, Hazard, Pickup } from "./types";
 import type { World } from "./world";
 
@@ -23,6 +24,11 @@ const PICKUP_COLOR: Record<string, [number, number, number]> = {
   overdrive: [230, 90, 255],
   magnet: [200, 200, 220],
 };
+/** flash shader uniform: constant, so drawing a flashing enemy allocates nothing */
+const FLASH_UNIFORM = { u_amt: 0.85 };
+/** the flash shader is compiled once per KAPLAY context, not on every game-scene entry */
+let flashShaderCtx: KAPLAYCtx | null = null;
+
 const PICKUP_LETTER: Record<string, string> = { coin: "$", power: "P", bomb: "B", repair: "+", shield: "S", rapid: "R", overdrive: "O", magnet: "M" };
 
 export class Renderer {
@@ -36,6 +42,15 @@ export class Renderer {
   private so: DrawSpriteOpt;
   private ro: DrawRectOpt;
   private co: DrawCircleOpt;
+  /** reused outline-circle (ring) and text options */
+  private ringOutline: { width: number; color: Color };
+  private rgo: DrawCircleOpt;
+  private to: DrawTextOpt;
+  /** playerKey cache: recomputed only when aircraft / skin change */
+  private pkAircraft = "";
+  private pkSkin = "";
+  private pkStd = "";
+  private pkDmg = "";
   private WHITE: Color;
   private BLACK: Color;
   private flashOk = true;
@@ -54,19 +69,26 @@ export class Renderer {
     this.so = { sprite: "", pos: this.pv, anchor: "center", frame: 0, scale: PIXEL_SCALE, angle: 0, opacity: 1, color: this.WHITE };
     this.ro = { pos: this.pv, width: 1, height: 1, anchor: "center", color: this.WHITE, opacity: 1, angle: 0 };
     this.co = { pos: this.pv, radius: 1, color: this.WHITE, opacity: 1 };
-    try {
-      k.loadShader(
-        "srflash",
-        null,
-        `uniform float u_amt;
+    this.ringOutline = { width: 1, color: this.WHITE };
+    this.rgo = { pos: this.pv, radius: 1, fill: false, outline: this.ringOutline, opacity: 1 };
+    this.to = { text: "", pos: this.pv, size: 12, anchor: "center", color: this.WHITE, opacity: 1 };
+    if (flashShaderCtx === k) this.flashShaderReady = true;
+    else {
+      try {
+        k.loadShader(
+          "srflash",
+          null,
+          `uniform float u_amt;
 vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
   vec4 c = def_frag();
   return vec4(mix(c.rgb, vec3(1.0), u_amt), c.a);
 }`,
-      );
-      this.flashShaderReady = true;
-    } catch {
-      this.flashOk = false;
+        );
+        flashShaderCtx = k;
+        this.flashShaderReady = true;
+      } catch {
+        this.flashOk = false;
+      }
     }
   }
 
@@ -118,7 +140,7 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
         o.opacity = 1;
         o.color = this.WHITE;
         o.shader = "srflash";
-        o.uniform = { u_amt: 0.85 };
+        o.uniform = FLASH_UNIFORM;
         this.k.drawSprite(o);
         o.shader = undefined;
         o.uniform = undefined;
@@ -172,11 +194,25 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
   }
 
   private ring(x: number, y: number, r: number, width: number, c: Color, opacity = 1): void {
-    this.k.drawCircle({ pos: this.k.vec2(x, y), radius: r, fill: false, outline: { width, color: c }, opacity });
+    const o = this.rgo;
+    this.pv.x = x;
+    this.pv.y = y;
+    o.radius = r;
+    o.opacity = opacity;
+    this.ringOutline.width = width;
+    this.ringOutline.color = c;
+    this.k.drawCircle(o);
   }
 
   private text(t: string, x: number, y: number, size: number, c: Color, opacity = 1): void {
-    this.k.drawText({ text: t, pos: this.k.vec2(x, y), size, anchor: "center", color: c, opacity });
+    const o = this.to;
+    this.pv.x = x;
+    this.pv.y = y;
+    o.text = t;
+    o.size = size;
+    o.color = c;
+    o.opacity = opacity;
+    this.k.drawText(o);
   }
 
   // ------------------------------------------------------------------ main
@@ -206,7 +242,7 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     this.drawFx(true);
     for (let i = 0; i < en.length; i++) {
       const e = en[i]!;
-      if (e.alive && e.def.layer === "air") this.drawShadow(e.def.sprite ?? "enemy_" + e.def.id, e);
+      if (e.alive && e.def.layer === "air") this.drawShadow(e.keys.base, e);
     }
     this.drawPlayerShadow();
     for (let i = 0; i < en.length; i++) {
@@ -235,7 +271,7 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     if (w.flashT > 0) {
       const a = 0.55 * Math.min(1, w.flashT / w.flashTotal);
       const f = w.flashColor;
-      k.drawRect({ pos: k.vec2(0, 0), width: GAME_W, height: GAME_H, color: this.col(f[0], f[1], f[2]), opacity: a });
+      this.rectTL(0, 0, GAME_W, GAME_H, this.col(f[0], f[1], f[2]), a);
     }
     try {
       this.hud.draw(w.buildHud());
@@ -255,9 +291,16 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
 
   // ------------------------------------------------------------------ enemies
   private drawEnemy(e: EnemyRT): void {
-    if (!e.onScreen && Math.abs(e.x - GAME_W / 2) > GAME_W && e.y < -200) return;
+    // off-screen cull: far to either side, or well above / below the field (big sprites may still poke in near the edge)
+    if (!e.onScreen && (Math.abs(e.x - GAME_W / 2) > GAME_W || e.y < -200 || e.y > GAME_H + 200)) return;
     const def = e.def;
-    const key = def.sprite ?? "enemy_" + def.id;
+    const keys = e.keys;
+    let key = keys.base;
+    // optional banking art: `<key>_bankl` / `<key>_bankr` (same frame layout) while sliding sideways
+    if (e.bank < -0.45 || e.bank > 0.45) {
+      const bk = e.bank < 0 ? keys.bankL : keys.bankR;
+      if (this.info(bk)) key = bk;
+    }
     const info = this.info(key);
     const w = this.w;
     if (info) {
@@ -266,7 +309,7 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
       if (e.flash > 0) this.sprFlash(key, e.x, e.y, frame, PIXEL_SCALE, ang);
       else this.spr(key, e.x, e.y, frame, PIXEL_SCALE, ang, 1);
       if (def.rotatesToPlayer) {
-        const gk = key + "_gun";
+        const gk = keys.gun;
         if (this.info(gk)) {
           const p = w.pc.state;
           const a = p.alive ? (Math.atan2(p.y - e.y, p.x - e.x) * 180) / PI : e.facing;
@@ -315,7 +358,7 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     if (!e.onScreen || def.destructible === false || e.invuln) return;
     if (def.vulnerableTo === "air") return;
     const both = def.vulnerableTo === "both";
-    const info = this.info(def.sprite ?? "enemy_" + def.id);
+    const info = this.info(e.keys.base);
     const hx = Math.max(e.hw, info ? (info.frameW * PIXEL_SCALE) / 2 : 0) + 4;
     const hy = Math.max(e.hh, info ? (info.frameH * PIXEL_SCALE) / 2 : 0) + 4;
     const c = both ? this.col(90, 235, 120) : this.col(255, 150, 40);
@@ -351,7 +394,7 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     const t = this.w.time;
     for (let i = 0; i < list.length; i++) {
       const p = list[i]!;
-      const key = "pickup_" + p.kind;
+      const key = pickupKey(p.kind);
       const info = this.info(key);
       const bob = Math.sin(t * 6 + p.id) * 2;
       if (info) {
@@ -420,9 +463,32 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
   private drawPlayerShadow(): void {
     const p = this.w.pc.state;
     if (!p.alive) return;
-    const key = "player_" + p.aircraft;
+    const key = this.playerKey(false);
     if (this.info(key)) this.spr(key, p.x + 12, p.y + 18, this.bankFrame(p.bank), PIXEL_SCALE, 0, 0.28, this.BLACK);
     else this.rect(p.x + 10, p.y + 16, 30, 34, this.BLACK, 0.25);
+  }
+
+  /**
+   * Player sprite key: `player_<aircraft>_<skin>` (+ `_dmg`) when the skin art exists, else `player_<aircraft>` (+ `_dmg`).
+   * A skinned plane without a `_dmg` variant keeps its paint when damaged rather than reverting to standard.
+   */
+  private playerKey(dmg: boolean): string {
+    const p = this.w.pc.state;
+    if (p.aircraft !== this.pkAircraft || p.skin !== this.pkSkin) {
+      // resolve once per aircraft / skin change (string building + sprite lookups are not per-frame work)
+      this.pkAircraft = p.aircraft;
+      this.pkSkin = p.skin;
+      const std = "player_" + p.aircraft;
+      const skin = p.skin && p.skin !== "standard" ? std + "_" + p.skin : "";
+      if (skin && this.info(skin)) {
+        this.pkStd = skin;
+        this.pkDmg = this.info(skin + "_dmg") ? skin + "_dmg" : skin;
+      } else {
+        this.pkStd = std;
+        this.pkDmg = this.info(std + "_dmg") ? std + "_dmg" : std;
+      }
+    }
+    return dmg ? this.pkDmg : this.pkStd;
   }
 
   private bankFrame(b: number): number {
@@ -441,9 +507,7 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
       const f = p.shield / p.maxShield;
       this.ring(p.x, p.y, 25 + Math.sin(w.time * 5) * 0.8, 1.5, this.col(90, 190, 255), 0.12 + 0.28 * f);
     }
-    const dmg = p.hp / p.maxHp < 0.4;
-    let key = "player_" + p.aircraft;
-    if (dmg && this.info(key + "_dmg")) key += "_dmg";
+    const key = this.playerKey(p.hp / p.maxHp < 0.4);
     if (this.info(key)) {
       this.spr(key, p.x, p.y, this.bankFrame(p.bank), PIXEL_SCALE, 0, opacity);
     } else {

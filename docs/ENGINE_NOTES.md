@@ -59,3 +59,20 @@ rotated by `facing-90`. Bullet sprites point UP and are rotated by `heading+90` 
 ## DEV demo
 `src/core/devdemo.ts` is only used when `levels.chapters` is empty (it uses the real enemy roster when present, plus a DEV boss). Remove nothing: it deactivates itself when real levels exist.
 Dev test tip: with Vite HMR other agents' edits reload the page; QA runs against a snapshot server (`server.hmr=false`).
+
+## Round 2: wide playfield, skins, enemy animation (gameplay-wide agent)
+- **Wide field:** everything reads `GAME_W` (480 portrait, up to 1520 on landscape desktop). Player horizontal speed AND accel are multiplied by
+  `H_SPEED_MUL = clamp(sqrt(X_SCALE), 1, 1.6)` (src/player; 1.0 on 480, ~1.6 at 1518) so crossing the field stays snappy; spawn/respawn at
+  `GAME_W/2`, clamp to the real width. Renderer flash/cull use GAME_W; the background base fill is oversized so screen shake never shows the clear colour.
+- **Skins:** `SKINS: SkinDef[]` in src/weapons (one per `SKIN_IDS`, same order). `standard` free; arctic 300, desert 450, nightfall 700, crimson 1000,
+  tiger 1500 (+ desert cleared), gold 2500 (+ citadel cleared). Helpers `getSkin(id)`, `selectedSkinFor(save, aircraft)` (selected AND owned, else
+  "standard"). `computeLoadout` fills `Loadout.skin`; the player controller copies it into `PlayerState.skin`.
+  Renderer key order: `player_<ac>_<skin>_dmg` (when damaged) -> `player_<ac>_<skin>` -> `player_<ac>_dmg` (damaged) -> `player_<ac>` -> shapes.
+  The shadow uses the same key. A skin without a `_dmg` strip keeps its paint when damaged.
+- **Enemy animation:** frames advance at the manifest `SpriteInfo.fps` (default 8; `fps: 0` = state strip, frame 0; `loop: false` holds the last frame)
+  with a per-enemy phase offset (`id * golden ratio`), so formations never animate in lockstep. Moving ground units (tracks/wheels: not
+  `movement.kind === "stationary"`) animate proportional to their own ground speed (`clamp(speed/35, 0.15, 1.4)`), so parked tanks idle and convoys roll.
+  Stationary units (radar dishes, turrets) and air units (rotors) always run at full fps. Boss parts are enemies, so their strips animate the same way.
+- **Banking art (optional, new key convention):** `enemy_<id>_bankl` / `enemy_<id>_bankr` (also `boss_<id>_<part>_bankl|r`), same frame layout as the
+  base strip. Used while the unit slides sideways (smoothed lateral speed > ~63 u/s, i.e. `EnemyRT.bank` beyond +-0.45). Missing keys fall back to the base strip.
+- **Pause overlay:** keyboard, mouse/touch and gamepad (input service `menuPad()`: D-pad/stick up-down, A select, B/Start resume; 0.15 s debounce after opening).

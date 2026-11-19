@@ -15,7 +15,7 @@ import {
   type PatternOwner,
   type WorldAPI,
 } from "../contracts";
-import { patternRunner, resolvePattern } from "../patterns";
+import { chapterIndexOf, CHAPTER_TIERS, patternRunner, resolvePattern, tieredPattern } from "../patterns";
 import { ENEMY_DEFS, ENEMY_META } from "./defs";
 import { stepMovement } from "./movement";
 
@@ -44,6 +44,8 @@ interface AIState {
   shieldUntil: number;
   /** extra local rng-based jitter so formations don't fire in lockstep */
   jitter: number;
+  /** chapter threat tier (ChapterDef.index, see patterns/tiers.ts) */
+  tier: number;
 }
 
 const RADAR_RADIUS = 220;
@@ -152,10 +154,22 @@ function launcherTick(e: Enemy, st: AIState, dt: number, world: WorldAPI, child:
 
 // ------------------------------------------------------------------------------------------ attacks
 
+/**
+ * Fire-rate multiplier from the difficulty setting (UI writes 0.7 / 1 / 1.5):
+ * easy 0.8x, normal 1x, hard 1.2x. The Engine scales bullet damage/speed separately.
+ */
+export function difficultyFireRate(diff: number): number {
+  return diff < 1 ? 1 - (1 - diff) * 0.667 : 1 + (diff - 1) * 0.4;
+}
+
+/** After a unit starts a ground-hazard attack (mortar, carpet, artillery), its other attacks wait at least this long (QA #12). */
+const HAZARD_LOCKOUT = 1.1;
+
+const isHazardPattern = (k: string) => k === "areaStrike" || k === "delayedBlast";
+
 function tickAttacks(e: Enemy, st: AIState, dt: number, world: WorldAPI) {
   const p = world.player;
-  const diff = difficulty(world);
-  let rate = 0.8 + 0.2 * diff; // easy 0.8x .. hard 1.1x
+  let rate = difficultyFireRate(difficulty(world)) * CHAPTER_TIERS[st.tier]!.fireRate;
   if (st.buffUntil > world.time) rate *= RADAR_RATE;
   const playerAlive = !!p && p.alive !== false;
 
@@ -175,8 +189,12 @@ function tickAttacks(e: Enemy, st: AIState, dt: number, world: WorldAPI) {
       continue;
     }
     a.timer = a.def.interval;
-    const pat = resolvePattern(a.def.pattern);
+    const pat = tieredPattern(resolvePattern(a.def.pattern), st.tier);
     st.running.push(patternRunner.start(pat, st.owner, world));
+    if (isHazardPattern(pat.kind)) {
+      // do not stack aimed fire on top of a fresh ground-hazard telegraph (bomber carpet + fan, walker mortar + burst)
+      for (const o of st.attacks) if (o !== a && o.timer < HAZARD_LOCKOUT) o.timer = HAZARD_LOCKOUT;
+    }
   }
 
   for (let i = st.running.length - 1; i >= 0; i--) {
@@ -206,6 +224,7 @@ export const enemySystem: EnemySystem = {
       buffUntil: 0,
       shieldUntil: 0,
       jitter,
+      tier: chapterIndexOf(world),
     };
     e.data.ai = st;
   },

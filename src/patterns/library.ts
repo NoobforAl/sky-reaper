@@ -72,8 +72,8 @@ const list: PatternDef[] = [
   { id: "burst_fan3", kind: "burst", bullet: makeBullet("small_red", { speed: 180 }), count: 3, spreadDeg: 30, shots: 3, gapMs: 220, sfx: "shot_spread" },
   { id: "needle_lead", kind: "aimed", aim: "lead", bullet: makeBullet("needle", { speed: 300 }), count: 1, telegraphMs: 250, sfx: "shot_laser" },
   { id: "big_orb_slow", kind: "aimed", bullet: makeBullet("big", { speed: 95, damage: 20 }), count: 3, spreadDeg: 40, telegraphMs: 600, sfx: "rocket" },
-  { id: "homing_pair", kind: "homing", bullet: makeBullet("missile", { speed: 145, turnRate: 85 }), count: 2, spreadDeg: 70, telegraphMs: 800 },
-  { id: "homing_salvo4", kind: "homing", bullet: makeBullet("missile", { speed: 150, turnRate: 80 }), count: 2, spreadDeg: 80, shots: 2, gapMs: 500, telegraphMs: 900 },
+  { id: "homing_pair", kind: "homing", bullet: makeBullet("missile", { speed: 160, turnRate: 90 }), count: 2, spreadDeg: 70, telegraphMs: 800 },
+  { id: "homing_salvo4", kind: "homing", bullet: makeBullet("missile", { speed: 160, turnRate: 90 }), count: 2, spreadDeg: 80, shots: 2, gapMs: 500, telegraphMs: 900 },
   { id: "sweep_wide", kind: "sweep", aim: "player", bullet: makeBullet("small_red", { speed: 180 }), count: 2, shots: 10, gapMs: 90, spreadDeg: 120, telegraphMs: 300, sfx: "shot_vulcan" },
   {
     id: "artillery_triple",

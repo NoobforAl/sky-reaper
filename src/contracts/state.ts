@@ -2,7 +2,7 @@
  * Save, settings, input, HUD, progression and services contracts. OWNER: Orchestrator.
  */
 import type { KAPLAYCtx } from "kaplay";
-import type { AircraftId, AirWeaponId, ChapterId, GroundWeaponId } from "./consts";
+import type { AircraftId, AirWeaponId, ChapterId, GroundWeaponId, SkinId } from "./consts";
 import type { AudioService, SpriteRegistry } from "./assets";
 import type { PlayerState, RunStats } from "./world";
 import type { BossHudInfo, ObjectiveDef } from "./levels";
@@ -121,6 +121,9 @@ export interface SaveData {
   unlockedGround: GroundWeaponId[];
   unlockedAircraft: AircraftId[];
   selectedAircraft: AircraftId;
+  /** owned skins ("standard" always owned) and the chosen skin per aircraft */
+  unlockedSkins: SkinId[];
+  selectedSkin: Partial<Record<AircraftId, SkinId>>;
   chapters: Partial<Record<ChapterId, ChapterRecord>>;
   /** highest chapter index unlocked (0-based) */
   chaptersUnlocked: number;
@@ -170,6 +173,15 @@ export interface AircraftDef {
   hitRadius: number;
   /** baseline ordnance capacity */
   bombs: number;
+}
+
+export interface SkinDef {
+  id: SkinId;
+  name: string;
+  desc: string;
+  /** credits to buy (0 = free); `unlockChapter` = also requires that chapter completed (optional) */
+  cost: number;
+  unlockChapter?: ChapterId;
 }
 
 // ---------------------------------------------------------------- HUD / results

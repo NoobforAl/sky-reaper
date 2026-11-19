@@ -1,18 +1,25 @@
-// STUB (Orchestrator) - UI agent replaces with menus, HUD, shop, settings, results.
-import { GAME_H, GAME_W, SCENES, type HudRenderer, type Services } from "../contracts";
+/**
+ * UI module (UI/UX agent): menu, chapters, shop (hangar), settings, results scenes + in-game HUD.
+ */
+import type { Services } from "../contracts";
+import { applyReducedMotion } from "./backdrop";
+import { registerChapters } from "./chapters";
+import { registerMenu } from "./menu";
+import { registerResults } from "./results";
+import { applyAudio, registerSettings } from "./settings";
+import { registerShop } from "./shop";
+
+export { createHud } from "./hud";
+export { drawBackdrop, drawScanlines, Gfx, button, slider, toggle, selector } from "./widgets";
 
 export function registerUiScenes(svc: Services): void {
-  const { k } = svc;
-  for (const s of [SCENES.menu, SCENES.chapters, SCENES.shop, SCENES.settings, SCENES.results]) {
-    k.scene(s, () => {
-      k.onDraw(() =>
-        k.drawText({ text: s.toUpperCase() + " (stub)", pos: k.vec2(GAME_W / 2, GAME_H / 3), anchor: "center", size: 24, color: k.rgb(255, 255, 255) }),
-      );
-      k.onKeyPress("enter", () => k.go(SCENES.game, { chapterId: "pacific" }));
-    });
-  }
-}
-
-export function createHud(_svc: Services): HudRenderer {
-  return { draw() {} };
+  registerMenu(svc);
+  registerChapters(svc);
+  registerShop(svc);
+  registerSettings(svc);
+  registerResults(svc);
+  // make sure persisted audio settings are applied at boot and on every change
+  applyAudio(svc);
+  applyReducedMotion();
+  svc.save.onSettingsChanged(() => applyAudio(svc));
 }

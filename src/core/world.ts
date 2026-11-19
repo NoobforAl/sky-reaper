@@ -4,6 +4,7 @@
  * See docs/ENGINE_NOTES.md for the per-step order and hot-path rules.
  */
 import {
+  CHAPTER_IDS,
   GAME_H,
   GAME_W,
   PIXEL_SCALE,
@@ -31,6 +32,7 @@ import {
   type RunStats,
   type Services,
   type SfxId,
+  type SpriteInfo,
   type WorldAPI,
 } from "../contracts";
 import { PlayerController, type PlayerHost } from "../player";
@@ -39,12 +41,22 @@ import { FXDEF } from "./fxdefs";
 import { Pool, makeRng } from "./pool";
 import type { Bullet, EnemyRT, FlareDecoy, Fx, FxInternalKind, Hazard, Pickup } from "./types";
 import { collideAll, updateBullets } from "./bullets";
+import { enemyKeys } from "./spritekeys";
 
 export const WORLD_TUNING = {
   pools: { playerBullets: 320, enemyBullets: 1400, enemies: 160, fx: 700, pickups: 96, hazards: 96 },
-  /** difficulty: enemy bullet damage = base * (dmgBase + dmgSlope*difficulty); speed likewise */
-  dmgBase: 0.5,
-  dmgSlope: 0.5,
+  /**
+   * difficulty: enemy bullet / blast / contact damage = base * (dmgBase + dmgSlope*difficulty) * chapterDmg[chapter];
+   * speed = spdBase + spdSlope*difficulty. Difficulty is 0.7 easy / 1 normal / 1.5 hard, so damage is
+   * x0.775 / x1 / x1.375 (was 0.5 + 0.5*d: x0.85 / x1 / x1.25, too flat to matter).
+   */
+  dmgBase: 0.25,
+  dmgSlope: 0.75,
+  /**
+   * per-chapter enemy damage multiplier (CHAPTER_IDS order: pacific, jungle, desert, arctic, citadel).
+   * Chapter 1 is the tutorial and stays gentle; the later chapters ramp so the player side scales with the campaign.
+   */
+  chapterDmg: [0.8, 1.05, 1.15, 1.25, 1.35],
   spdBase: 0.92,
   spdSlope: 0.08,
   scrollEase: 220,
@@ -227,6 +239,8 @@ export class World implements WorldAPI, FireContext, PlayerHost {
   private missileList: Array<{ id: number; x: number; y: number; locked: boolean }> = [];
   private missilePool: Array<{ id: number; x: number; y: number; locked: boolean }> = [];
   private hud: HudData;
+  /** reused HudData.banner object (buildHud runs every frame) */
+  private hudBanner: { text: string; subtext?: string; alpha: number } = { text: "", alpha: 0 };
   fps = 60;
   private bossRoarT = 0;
   private chainT = 0;
@@ -248,7 +262,8 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     this.frng = makeRng(this.seed ^ 0x5bd1e995);
     const settings = init.svc.save.data.settings;
     this.difficulty = settings.difficulty ?? 1;
-    this.dmgScale = T.dmgBase + T.dmgSlope * this.difficulty;
+    const chIdx = (CHAPTER_IDS as readonly string[]).indexOf(init.chapter.id);
+    this.dmgScale = (T.dmgBase + T.dmgSlope * this.difficulty) * (T.chapterDmg[chIdx] ?? 1);
     this.spdScale = T.spdBase + T.spdSlope * this.difficulty;
     this.god = !!init.params.godMode;
     this.scrollSpeed = this.scrollTarget = init.chapter.scrollSpeed;
@@ -313,6 +328,10 @@ export class World implements WorldAPI, FireContext, PlayerHost {
   // ================================================================== WorldAPI getters
   get player() {
     return this.pc.state;
+  }
+  /** 0-based chapter index (CHAPTER_IDS order); read by src/patterns/tiers.ts chapterIndexOf() */
+  get chapterIndex(): number {
+    return Math.max(0, (CHAPTER_IDS as readonly string[]).indexOf(this.chapter.id));
   }
   get enemies(): ReadonlyArray<Enemy> {
     return this.enemyPool.items;
@@ -558,7 +577,12 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       const list = this.enemyPool.items;
       for (let i = list.length - 1; i >= 0; i--) this.removeEnemySilent(list[i]!, i);
       this.eBullets.clear();
+      this.shootables = 0;
+      this.eDeadN = 0;
       this.hazards.clear();
+      // dropped enemies sit in the graveyard until graveSec of sim time passes; no sim time passes for them here,
+      // so drain it every chunk or long skips exhaust the enemy pool (boss parts then fail to spawn).
+      this.cleanupEnemies(WORLD_TUNING.graveSec + 1);
     }
     this.god = prevGod;
     this.scrollSpeed = this.scrollTarget;
@@ -592,6 +616,13 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     e.facing = 90;
     e.flash = 0;
     e.frame = 0;
+    e.animT = 0;
+    // golden-ratio phase per id: identical units in a formation never animate in lockstep
+    e.animPhase = (e.id * 0.6180339887) % 1;
+    e.lastX = x;
+    e.lastY = y;
+    e.bank = 0;
+    e.keys = enemyKeys(def);
     e.bossId = o.bossId;
     e.invuln = false;
     e.opts = o;
@@ -603,7 +634,11 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     e.smokeT = 0;
     e.graveT = 0;
     e.counted = def.destructible !== false && !o.bossId;
-    if (e.counted) this.stats.spawned++;
+    if (e.counted) {
+      this.stats.spawned++;
+      // keep killRate live (it used to update only on kills, so it read 100% until the first counted kill)
+      this.stats.killRate = Math.min(1, this.killedCounted / this.stats.spawned);
+    }
     try {
       this.enemySys.onSpawn(e, this);
     } catch (err) {
@@ -635,9 +670,8 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       const on = e.x > -e.hw && e.x < GAME_W + e.hw && e.y > -e.hh && e.y < GAME_H + e.hh;
       e.onScreen = on;
       if (on) e.tOn += dt;
-      // animation frame
-      const info = reg.info(def.sprite ?? "enemy_" + def.id);
-      if (info && info.frames > 1) e.frame = Math.floor(e.t * (info.fps ?? 8)) % info.frames;
+      // animation frame (manifest fps, per-enemy phase; tracked ground units animate with their ground speed)
+      this.animateEnemy(e, dt, reg.info(e.keys.base));
       // damage smoke / fire
       if (on && def.destructible !== false) {
         const f = e.hp / e.maxHp;
@@ -654,6 +688,34 @@ export class World implements WorldAPI, FireContext, PlayerHost {
         if (e.y > GAME_H + T.enemyCullBottom + e.hh || e.y < -T.enemyCullTop || ((e.x < -T.enemyCullSide || e.x > GAME_W + T.enemyCullSide) && e.t > 1)) {
           this.cullEnemy(e);
         }
+      }
+    }
+  }
+
+  private animateEnemy(e: EnemyRT, dt: number, info: SpriteInfo | undefined): void {
+    const def = e.def;
+    const mdx = e.x - e.lastX;
+    let mdy = e.y - e.lastY;
+    if (def.layer === "ground" && def.anchored !== false) mdy -= this.scrollSpeed * dt;
+    e.lastX = e.x;
+    e.lastY = e.y;
+    let rate = 1;
+    if (def.layer === "ground" && def.movement.kind !== "stationary" && dt > 0) {
+      // tracks/wheels: roll with the unit's own speed over the ground (parked vehicles idle slowly)
+      const spd = Math.hypot(mdx, mdy) / dt;
+      rate = Math.max(0.15, Math.min(1.4, spd / 35));
+    }
+    e.animT += dt * rate;
+    if (dt > 0) {
+      const tb = Math.max(-1, Math.min(1, mdx / dt / 140));
+      e.bank += (tb - e.bank) * Math.min(1, dt * 8);
+    }
+    if (info && info.frames > 1) {
+      const fps = info.fps ?? 8;
+      if (fps <= 0) e.frame = 0; // state strip, not an animation
+      else {
+        const f = Math.floor(e.animT * fps + e.animPhase * info.frames);
+        e.frame = info.loop === false ? Math.min(info.frames - 1, f) : f % info.frames;
       }
     }
   }
@@ -768,9 +830,9 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     }
     const sz = def.explosion;
     this.boom(er.x, er.y, sz, def.layer === "ground");
-    if (def.layer === "ground" && this.svc.sprites.has("enemy_" + def.id + "_dead")) {
+    if (def.layer === "ground" && this.svc.sprites.has(er.keys.dead)) {
       const w = this.spawnFxI("wreck", er.x, er.y, 1, true);
-      if (w) w.sprite = "enemy_" + def.id + "_dead";
+      if (w) w.sprite = er.keys.dead;
     }
     let score = 0;
     if (byPlayer) {
@@ -895,6 +957,7 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     b.trailT = 0;
     b.hitN = 0;
     b.rot = 0;
+    b.dead = false;
     this.setVel(b);
     if (b.motion === "sine") {
       // perpendicular unit vector
@@ -1043,10 +1106,19 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     this.stats.comboTimer = 0;
   }
 
+  /**
+   * >0 while a pass walks `eBullets.items` by index and may call into code that clears bullets
+   * (pc.hurt -> die -> clearEnemyBullets). While set, clearEnemyBullets only marks bullets `dead`;
+   * the pass skips them and calls sweepDeadEnemyBullets() when it ends. See bullets.ts.
+   */
+  eBulletPass = 0;
+  private eDeadN = 0;
+
   clearEnemyBullets(x = -1, y = -1, radius = -1): void {
     const list = this.eBullets.items;
     const all = radius < 0 || x < 0;
     const r2 = radius * radius;
+    const defer = this.eBulletPass > 0;
     for (let i = list.length - 1; i >= 0; i--) {
       const b = list[i]!;
       if (!all) {
@@ -1054,12 +1126,41 @@ export class World implements WorldAPI, FireContext, PlayerHost {
         const dy = b.y - y;
         if (dx * dx + dy * dy > r2) continue;
       }
-      this.freeEnemyBullet(i, b);
+      if (defer) {
+        if (!b.dead) {
+          b.dead = true;
+          this.eDeadN++;
+        }
+      } else this.freeEnemyBullet(i, b);
     }
   }
 
-  /** remove an enemy bullet from the pool, keeping missile-lock bookkeeping */
+  /** free every bullet marked `dead` during a pass (no-op when none) */
+  sweepDeadEnemyBullets(): void {
+    if (this.eDeadN <= 0 || this.eBulletPass > 0) return;
+    const list = this.eBullets.items;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const b = list[i]!;
+      if (b.dead) this.freeEnemyBullet(i, b);
+    }
+    this.eDeadN = 0;
+  }
+
+  /**
+   * Remove an enemy bullet from the pool, keeping missile-lock / shootable bookkeeping.
+   * Identity-checked: if `i` no longer points at `b` (the list changed under the caller) the bullet is looked up,
+   * and a bullet that is already gone is ignored, so nothing is ever released or counted twice.
+   */
   freeEnemyBullet(i: number, b: Bullet): void {
+    const items = this.eBullets.items;
+    if (items[i] !== b) {
+      i = items.indexOf(b);
+      if (i < 0) return;
+    }
+    if (b.dead) {
+      b.dead = false;
+      if (this.eDeadN > 0) this.eDeadN--;
+    }
     if (b.hp > 0) this.shootables--;
     if (b.locked) {
       b.locked = false;
@@ -1275,7 +1376,10 @@ export class World implements WorldAPI, FireContext, PlayerHost {
         }
       } else {
         h.blastT += dt;
-        if (h.blastT > 0.3) this.hazards.releaseAt(i);
+        if (h.blastT > 0.3) {
+          this.hazards.releaseAt(i);
+          continue;
+        }
       }
       if (h.y > GAME_H + h.radius + 20) this.hazards.releaseAt(i);
     }
@@ -1370,7 +1474,11 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     if (b) {
       const total = b.ms / 1000;
       const a = Math.min(1, b.t / 0.2, (total - b.t) / 0.45);
-      h.banner = { text: b.text, subtext: b.subtext, alpha: Math.max(0, a) };
+      const hb = this.hudBanner;
+      hb.text = b.text;
+      hb.subtext = b.subtext;
+      hb.alpha = Math.max(0, a);
+      h.banner = hb;
     } else h.banner = null;
     // missiles
     const list = this.missileList;
@@ -1492,6 +1600,7 @@ function makeBullet(): Bullet {
     hitIds: [0, 0, 0, 0, 0, 0, 0, 0],
     hitN: 0,
     rot: 0,
+    dead: false,
   };
 }
 
@@ -1522,6 +1631,12 @@ function makeEnemy(): EnemyRT {
     removed: false,
     graveT: 0,
     counted: false,
+    animT: 0,
+    animPhase: 0,
+    lastX: 0,
+    lastY: 0,
+    bank: 0,
+    keys: enemyKeys(NULL_DEF),
   };
 }
 

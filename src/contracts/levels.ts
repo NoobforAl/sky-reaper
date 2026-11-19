@@ -6,7 +6,10 @@ import type { EnemySpawnOpts } from "./enemies";
 import type { RunStats, WorldAPI } from "./world";
 import type { MusicId } from "./assets";
 
-/** One scheduled event on the chapter timeline. `t` = seconds since chapter start. */
+/**
+ * One scheduled event on the chapter timeline. `t` = seconds since chapter start.
+ * `x`/`dx` are authored in DESIGN_W (480) space; the runner maps them to the live GAME_W (see consts.ts X_SCALE).
+ */
 export type LevelEvent =
   | { t: number; type: "spawn"; enemy: string; x: number; y?: number; opts?: EnemySpawnOpts }
   /** spawn a formation: N units spaced by (dx,dy), optionally staggered in time */

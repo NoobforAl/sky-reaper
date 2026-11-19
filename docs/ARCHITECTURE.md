@@ -31,6 +31,11 @@ Rendering approach: **entities are plain objects in pools** (not KAPLAY game obj
 `k.onDraw` using `k.drawSprite / drawRect / drawCircle`. KAPLAY provides canvas, scenes, input, asset loading, text and
 audio context. All gameplay code uses `world.rng()` (seeded), never `Math.random()`.
 
+**Adaptive playfield (round 2):** `GAME_H` is fixed at 854. `GAME_W` is chosen once at load: 480 (`DESIGN_W`) on phones and
+narrow or portrait windows; on landscape desktop windows it is `854 × aspect`, capped at `MAX_GAME_W` 1520, so the game fills the screen.
+`?layout=wide|portrait` forces either mode. Level content is authored in 480-wide space and the runner scales x by `X_SCALE`.
+Aircraft skins: `SKIN_IDS`; sprite `player_<aircraft>_<skin>`; `SaveData.unlockedSkins/selectedSkin`; catalog `SKINS` in src/weapons.
+
 Coordinates: game units, origin top-left, **+y is down**; angles in degrees, **0 = right, 90 = down**.
 Ground enemies get `+scrollSpeed*dt` on y automatically (unless `def.anchored === false`, e.g. naval units drifting).
 

@@ -1,5 +1,6 @@
 /** Internal entity shapes used by the engine (pooled plain objects). */
 import type { BulletMotion, BulletVisual, DamageClass, Enemy, FxKind, PickupKind } from "../contracts";
+import type { EnemyKeys } from "./spritekeys";
 
 export interface Bullet {
   id: number;
@@ -59,6 +60,11 @@ export interface Bullet {
   hitN: number;
   /** render rotation (deg) for spinning visuals */
   rot: number;
+  /**
+   * enemy bullets only: removal was requested while a pass was iterating `eBullets` by index
+   * (World.clearEnemyBullets during a bullet loop). Skipped by every pass and swept at the end of the loop.
+   */
+  dead: boolean;
 }
 
 export interface EnemyRT extends Enemy {
@@ -73,6 +79,16 @@ export interface EnemyRT extends Enemy {
   graveT: number;
   /** counts toward killRate */
   counted: boolean;
+  /** animation clock (s, scaled by movement for tracked ground units) + per-enemy phase offset (frames) */
+  animT: number;
+  animPhase: number;
+  /** last sim-step position (ground-relative motion / banking) */
+  lastX: number;
+  lastY: number;
+  /** smoothed bank -1..1 from lateral motion (selects `_bankl` / `_bankr` art when present) */
+  bank: number;
+  /** cached sprite keys for `def` (set at spawn; see spritekeys.ts) */
+  keys: EnemyKeys;
 }
 
 export type FxInternalKind = FxKind | "ping" | "wreck";

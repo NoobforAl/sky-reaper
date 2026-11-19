@@ -8,10 +8,15 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler deploy",
+    "deploy": "npm run build && npm run typecheck:worker && wrangler deploy",
     "typecheck": "tsc --noEmit",
+    "typecheck:worker": "tsc --noEmit -p worker/tsconfig.json",
+    "dev:edge": "npm run build && wrangler dev",
+    "db:migrate:local": "wrangler d1 migrations apply sky-reaper --local",
+    "db:migrate:remote": "wrangler d1 migrations apply sky-reaper --remote",
     "test": "playwright test",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "art": "node scripts/art/build.mjs"
   },
   "dependencies": {
     "kaplay": "^3001.0.19"

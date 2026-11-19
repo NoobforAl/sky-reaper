@@ -5,8 +5,10 @@ export const RESULTS_TUNING = {
   scorePerLife: 500,
   scorePerObjective: 500,
   bossBonus: 2000,
-  /** victory credits: score / this */
-  creditScoreDivisorWin: 100,
+  /** victory credits: score / this (was 100: score was the largest credit source and fed farming) */
+  creditScoreDivisorWin: 200,
+  /** share of `chapter.reward` paid when the chapter was already completed before (first clear pays it in full) */
+  replayRewardFrac: 0.25,
   /** defeat credits: score / this (coins are always kept) */
   creditScoreDivisorLoss: 250,
   playerName: "PILOT",
@@ -33,7 +35,9 @@ export function medalFor(score: number, thresholds: readonly number[]): number {
 }
 
 /**
- * Finalise a run: mutates `stats` (bonuses, killRate, time), writes to the save and returns ResultsParams.
+ * Finalise a run: mutates `stats` (bonuses, time), writes to the save and returns ResultsParams.
+ * `stats.killRate` is NOT recomputed here: the World keeps it live from counted kills / counted spawns
+ * (boss parts and indestructible props excluded), and `stats.kills` includes boss parts.
  * `quit` = aborted from the pause menu: only coins are kept.
  */
 export function finishRun(
@@ -46,7 +50,8 @@ export function finishRun(
 ): ResultsParams {
   const R = RESULTS_TUNING;
   stats.timeSec = timeSec;
-  stats.killRate = stats.spawned > 0 ? Math.min(1, stats.kills / stats.spawned) : 1;
+  const id = chapter.id as ChapterId;
+  const prev = save.data.chapters?.[id];
 
   const objectives = chapter.objectives.map((def) => ({ def, done: victory && objectiveDone(def, stats) }));
   if (victory) {
@@ -58,15 +63,14 @@ export function finishRun(
   let credits = stats.coins;
   if (victory) {
     credits += objectives.reduce((a, o) => a + (o.done ? o.def.reward : 0), 0);
-    credits += chapter.reward;
+    credits += prev?.completed ? Math.floor(chapter.reward * R.replayRewardFrac) : chapter.reward;
     credits += Math.floor(stats.score / R.creditScoreDivisorWin);
   } else {
     credits += Math.floor(stats.score / R.creditScoreDivisorLoss);
   }
 
-  const id = chapter.id as ChapterId;
-  const prev = save.data.chapters?.[id];
-  const newBest = stats.score > (prev?.bestScore ?? 0);
+  // only victories are recorded as the chapter best (recordChapter), so only they can be a new best
+  const newBest = victory && stats.score > (prev?.bestScore ?? 0);
   try {
     if (credits > 0) save.earn(credits);
     if (victory) {

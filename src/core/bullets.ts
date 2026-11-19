@@ -183,11 +183,19 @@ export function updateBullets(w: World, dt: number): void {
   for (let i = pb.length - 1; i >= 0; i--) {
     if (!stepPlayer(w, pb[i]!, dt)) w.pBullets.releaseAt(i);
   }
+  // stepEnemy can detonate -> enemyBlast -> pc.hurt -> die -> clearEnemyBullets. During the pass that only marks
+  // bullets `dead` (World.eBulletPass), so indices stay valid; marked bullets are skipped and swept afterwards.
   const eb = w.eBullets.items;
-  for (let i = eb.length - 1; i >= 0; i--) {
-    const b = eb[i]!;
-    if (!stepEnemy(w, b, dt)) w.freeEnemyBullet(i, b);
+  w.eBulletPass++;
+  try {
+    for (let i = eb.length - 1; i >= 0; i--) {
+      const b = eb[i]!;
+      if (b.dead || !stepEnemy(w, b, dt)) w.freeEnemyBullet(i, b);
+    }
+  } finally {
+    w.eBulletPass--;
   }
+  w.sweepDeadEnemyBullets();
   // flare decoy bookkeeping happens in World.updateFx
 }
 
@@ -264,20 +272,28 @@ export function collideAll(w: World, dt: number): void {
   const p = w.pc.state;
   if (!p.alive || w.god) return;
   const eb = w.eBullets.items;
-  for (let i = eb.length - 1; i >= 0; i--) {
-    if (p.invuln > 0) break;
-    const b = eb[i]!;
-    const dx = b.x - p.x;
-    const dy = b.y - p.y;
-    const r = (b.blastRadius > 0 ? Math.max(b.radius, b.blastRadius * 0.45) : b.radius * 0.9) + p.hitRadius;
-    if (dx * dx + dy * dy > r * r) continue;
-    if (b.blastRadius > 0) w.detonate(b);
-    else {
-      w.pc.hurt(b.damage, b.isMissile ? "missile" : "bullet", w);
-      w.spawnFxI("hit", b.x, b.y, 1, false);
+  // pc.hurt / detonate can kill the player -> clearEnemyBullets: deferred while eBulletPass > 0 (see updateBullets)
+  w.eBulletPass++;
+  try {
+    for (let i = eb.length - 1; i >= 0; i--) {
+      if (p.invuln > 0 || !p.alive) break;
+      const b = eb[i]!;
+      if (b.dead) continue;
+      const dx = b.x - p.x;
+      const dy = b.y - p.y;
+      const r = (b.blastRadius > 0 ? Math.max(b.radius, b.blastRadius * 0.45) : b.radius * 0.9) + p.hitRadius;
+      if (dx * dx + dy * dy > r * r) continue;
+      if (b.blastRadius > 0) w.detonate(b);
+      else {
+        w.pc.hurt(b.damage, b.isMissile ? "missile" : "bullet", w);
+        w.spawnFxI("hit", b.x, b.y, 1, false);
+      }
+      w.freeEnemyBullet(i, b);
     }
-    w.freeEnemyBullet(i, b);
+  } finally {
+    w.eBulletPass--;
   }
+  w.sweepDeadEnemyBullets();
   if (p.invuln > 0 || !p.alive) return;
   for (let j = 0; j < en.length; j++) {
     const e = en[j]!;

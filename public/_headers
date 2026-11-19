@@ -1,0 +1,18 @@
+# Cloudflare Workers Static Assets headers (copied to dist/ by Vite). Owner: DevOps.
+# Non-API requests are served by the asset layer (run_worker_first: ["/api/*"]), so this file is
+# the single place static cache policy lives. SPA-fallback HTML matches "/*" -> no-cache.
+
+/*
+  Cache-Control: no-cache
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: same-origin
+
+# Vite's content-hashed build output (dist/assets/<name>-<hash>.js|css). Never changes -> cache forever.
+# Unhashed files under /assets (sprites, manifest.json from public/assets) keep "no-cache" (revalidated via ETag).
+/assets/*.js
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/*.css
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable

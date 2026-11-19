@@ -2,8 +2,13 @@
  * Player controller (Engine agent): movement, weapons, flares, damage, death / respawn, pickups.
  * The World owns one PlayerController; `controller.state` is the PlayerState exposed through WorldAPI.player.
  * All tuning constants are exported in PLAYER_TUNING.
+ *
+ * Ground ordnance fires ONCE PER PRESS on every input (keyboard, gamepad, touch icon): `input.bombPressed` only,
+ * holding the key/button never repeats. Ordnance is scarce (5-7 + slow regen), and hold-to-repeat emptied the rack
+ * by accident (round-3 feedback, worst on touch where a resting finger counts as "held"). A press made while the
+ * ordnance cooldown is still running is buffered for `bombBufferSec`, so quick double-taps are not swallowed.
  */
-import { GAME_H, GAME_W, type AirWeaponId, type GroundWeaponId, type InputState, type PickupKind, type PlayerState, type RunStats } from "../contracts";
+import { GAME_H, GAME_W, X_SCALE, type AirWeaponId, type GroundWeaponId, type InputState, type PickupKind, type PlayerState, type RunStats } from "../contracts";
 import {
   airFireRate,
   fireAir,
@@ -29,21 +34,31 @@ export const PLAYER_TUNING = {
   marginX: 18,
   marginTop: 70,
   marginBottom: 34,
-  hitIframes: 1.2,
-  shieldOnlyIframes: 0.7,
+  /** i-frames after a hit that reached the hull (QA #1: was 1.2, too forgiving with regen) */
+  hitIframes: 0.9,
+  /** i-frames after a hit fully absorbed by the shield (was 0.7) */
+  shieldOnlyIframes: 0.5,
   flareIframes: 0.4,
   flareRadius: 120,
   respawnDelay: 1.5,
   respawnIframes: 3,
   respawnBombsMin: 2,
-  bombRegenSec: 25,
+  /** one ordnance back every N s while below max (was 25; ordnance-limited objectives, QA #5) */
+  bombRegenSec: 18,
+  /** a bomb press during the ordnance cooldown is remembered this long */
+  bombBufferSec: 0.3,
   rapidMul: 1.4,
   overdriveMul: 2,
   pickupRapid: 10,
   pickupOverdrive: 10,
   pickupMagnet: 12,
   repairFrac: 0.35,
+  /** horizontal speed/accel multiplier on wide (desktop) playfields: clamp(sqrt(X_SCALE), 1, hSpeedMax) */
+  hSpeedMax: 1.6,
 } as const;
+
+/** horizontal speed multiplier for the live playfield width (1 on the 480 portrait field) */
+export const H_SPEED_MUL = Math.max(1, Math.min(PLAYER_TUNING.hSpeedMax, Math.sqrt(X_SCALE)));
 
 export interface PlayerHost extends FireContext {
   readonly autoFire: boolean;
@@ -70,6 +85,7 @@ export class PlayerController {
   private wv = 0;
   private bombRegenT = 0;
   private denyCd = 0;
+  private bombBuffer = 0;
   /** enemy id the seeker would lock right now (0 none) */
   lockTargetId = 0;
   /** seconds since the player died (render explosion etc.) */
@@ -94,6 +110,7 @@ export class PlayerController {
       airWeapon: loadout.airWeapons[0] ?? "vulcan",
       groundWeapon: loadout.groundWeapons[0] ?? "bomb",
       aircraft: loadout.aircraft.id,
+      skin: loadout.skin ?? "standard",
       invuln: 1.5,
       flareCd: 0,
       rapid: 0,
@@ -138,7 +155,7 @@ export class PlayerController {
       const dy = input.dragTarget.y - p.y;
       let dvx = dx * T.dragGain;
       let dvy = dy * T.dragGain;
-      const cap = maxV * T.dragSpeedMul;
+      const cap = maxV * H_SPEED_MUL * T.dragSpeedMul;
       const m = Math.hypot(dvx, dvy);
       if (m > cap) {
         dvx *= cap / m;
@@ -155,7 +172,7 @@ export class PlayerController {
         mx /= len;
         my /= len;
       }
-      p.vx = approach(p.vx, mx * maxV, (mx !== 0 ? T.accel : T.decel) * dt);
+      p.vx = approach(p.vx, mx * maxV * H_SPEED_MUL, (mx !== 0 ? T.accel : T.decel) * H_SPEED_MUL * dt);
       p.vy = approach(p.vy, my * maxV, (my !== 0 ? T.accel : T.decel) * dt);
     }
     // wind: drifts the aircraft, decays when the wind stops
@@ -177,7 +194,7 @@ export class PlayerController {
       p.y = GAME_H - T.marginBottom;
       if (p.vy > 0) p.vy = 0;
     }
-    const tb = Math.max(-1, Math.min(1, p.vx / maxV));
+    const tb = Math.max(-1, Math.min(1, p.vx / (maxV * H_SPEED_MUL)));
     p.bank += (tb - p.bank) * Math.min(1, dt * 14);
 
     // ------------------------------------------------------------ shield regen
@@ -233,7 +250,11 @@ export class PlayerController {
         p.bombs = Math.min(p.maxBombs, p.bombs + 1);
       }
     } else this.bombRegenT = 0;
-    if ((input.bomb || input.bombPressed) && this.groundCd <= 0) {
+    // once per press (edge), never on hold; see the header comment
+    if (input.bombPressed) this.bombBuffer = T.bombBufferSec;
+    else if (this.bombBuffer > 0) this.bombBuffer -= dt;
+    if (this.bombBuffer > 0 && this.groundCd <= 0) {
+      this.bombBuffer = 0;
       const wd = getWeapon(p.groundWeapon);
       const cost = wd.ammoCost ?? 1;
       if (p.bombs >= cost) {
@@ -242,7 +263,7 @@ export class PlayerController {
         this.groundCd = groundCooldown(p.groundWeapon);
         w.mutStats.bombsUsed += cost;
         w.events.emit("bombUsed", {});
-      } else if (this.denyCd <= 0 && input.bombPressed) {
+      } else if (this.denyCd <= 0) {
         this.denyCd = 0.4;
         w.playSfx("ui_deny", { volume: 0.5 });
       }
@@ -350,6 +371,7 @@ export class PlayerController {
     p.bombs = Math.max(p.bombs, Math.min(p.maxBombs, PLAYER_TUNING.respawnBombsMin));
     p.rapid = p.overdrive = p.magnet = 0;
     this.airCd = this.groundCd = 0;
+    this.bombBuffer = 0;
     this.shieldT = 0;
     w.clearEnemyBullets(p.x, p.y, 150);
     w.events.emit("playerRespawned", {});
