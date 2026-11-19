@@ -89,9 +89,10 @@ export const fa: StringTable = {
   "menu.creditsTitle": "سازندگان و رکوردها",
   "menu.creditsLine1": "SKY REAPER - شوتر عمودی",
   "menu.creditsLine2": "ساخته با KAPLAY + TypeScript + Vite",
-  "menu.creditsLine3": "گرافیک و صدا: اصلی / مجوز آزاد،",
-  "menu.creditsLine4": "ASSET_CREDITS.md را ببین",
+  "menu.creditsLine3": "گرافیک، موسیقی و صدا: ساخته‌شده برای همین بازی، با مجوز آزاد",
+  "menu.creditsLine4": "فونت فارسی: وزیرمتن، اثر صابر راستی‌کردار، با مجوز آزاد",
   "menu.creditsLine5": "کد: مجوز MIT",
+  "menu.creditsLine6": "کد منبع و فهرست کامل منابع:",
 
   "controls.fire": "شلیک",
   "controls.bomb": "بمب",

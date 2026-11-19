@@ -46,8 +46,18 @@ async function boot() {
     pixelDensity: renderDensity(),
     touchToMouse: true,
     debug: false,
-    loadingScreen: true,
+    // index.html shows its own loading screen (instant, before JS); progress is reported to it below
+    loadingScreen: false,
   });
+  const load = window as unknown as { __skyLoad?: (p: number) => void; __skyLoaded?: () => void };
+  load.__skyLoad?.(0.15);
+  let loading = true;
+  const pollLoad = () => {
+    if (!loading) return;
+    load.__skyLoad?.(0.15 + 0.8 * k.loadProgress());
+    requestAnimationFrame(pollLoad);
+  };
+  requestAnimationFrame(pollLoad);
 
   const errors: string[] = [];
   window.addEventListener("error", (e) => errors.push(String(e.message)));
@@ -95,9 +105,17 @@ async function boot() {
   requestAnimationFrame(tick);
 
   k.go(SCENES.menu);
+  // close the HTML loading screen once KAPLAY's own asset queue is done and the menu has drawn a frame
+  const finish = () => {
+    loading = false;
+    requestAnimationFrame(() => requestAnimationFrame(() => load.__skyLoaded?.()));
+  };
+  if (k.loadProgress() >= 1) finish();
+  else k.onLoad(finish);
 }
 
 boot().catch((e) => {
   console.error(e);
   (window as unknown as { __skyBootError: string }).__skyBootError = String(e);
+  (window as unknown as { __skyLoadError?: (m: string) => void }).__skyLoadError?.(String(e).slice(0, 120));
 });

@@ -83,9 +83,10 @@ export const en = {
   "menu.creditsTitle": "CREDITS & RECORDS",
   "menu.creditsLine1": "SKY REAPER - a vertical shoot 'em up",
   "menu.creditsLine2": "Built with KAPLAY + TypeScript + Vite",
-  "menu.creditsLine3": "Art & audio: original / open licensed,",
-  "menu.creditsLine4": "see ASSET_CREDITS.md",
+  "menu.creditsLine3": "Art, music & SFX: original, made for this game (CC0)",
+  "menu.creditsLine4": "Farsi font: Vazirmatn by Saber Rastikerdar (OFL 1.1)",
   "menu.creditsLine5": "Code: MIT License",
+  "menu.creditsLine6": "Source code & full asset credits:",
 
   // controls legend (key names themselves stay Latin, see docs glossary)
   "controls.fire": "FIRE",

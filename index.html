@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0e1a" />
     <title>SKY REAPER</title>
+    <meta name="description" content="SKY REAPER - a vertical military shoot 'em up. Air-to-air and air-to-ground combat across 5 chapters." />
+    <meta property="og:title" content="SKY REAPER" />
+    <meta property="og:description" content="Air-to-air and air-to-ground shmup. 5 chapters, bosses, upgrades." />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
     <style>
       :root {
         --sr-bg: #05070d;
@@ -36,12 +42,90 @@
         box-shadow: 0 0 0 2px var(--sr-steel), 0 0 0 6px var(--sr-navy), 0 0 0 8px #24324f, 0 0 40px 8px rgba(72, 222, 255, 0.12), 0 18px 60px rgba(0, 0, 0, 0.8);
         border-radius: 2px;
       }
+
+      /* ---------------------------------------------------------------- loading screen (shown before any JS loads) */
+      #sr-loading {
+        position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 18px; color: #e8f1ff; font-family: "Courier New", ui-monospace, monospace; text-align: center;
+        background:
+          radial-gradient(ellipse at 50% 35%, rgba(40, 70, 130, 0.55), transparent 65%),
+          repeating-linear-gradient(0deg, rgba(72, 222, 255, 0.04) 0 1px, transparent 1px 32px),
+          linear-gradient(#0a1430, #05070d 70%);
+        transition: opacity 0.45s ease;
+      }
+      #sr-loading.done { opacity: 0; pointer-events: none; }
+      #sr-loading .sr-jet {
+        width: 64px; height: 64px; image-rendering: pixelated; animation: sr-bob 1.6s ease-in-out infinite;
+        filter: drop-shadow(0 0 10px rgba(255, 170, 60, 0.55));
+      }
+      #sr-loading h1 {
+        margin: 0; font-size: clamp(34px, 8vw, 72px); letter-spacing: 0.12em; font-weight: 900;
+        background: linear-gradient(#fff6d0, #ffb43c 55%, #e0561e); -webkit-background-clip: text; background-clip: text; color: transparent;
+        text-shadow: none; filter: drop-shadow(0 4px 0 #3a1408) drop-shadow(0 0 18px rgba(255, 140, 40, 0.35));
+      }
+      #sr-loading .sr-sub { margin-top: -10px; font-size: 14px; letter-spacing: 0.35em; color: #8fb4e8; }
+      #sr-loading .sr-bar { width: min(320px, 70vw); height: 10px; border: 2px solid #465c80; background: #0c142a; padding: 2px; box-sizing: content-box; }
+      #sr-loading .sr-fill { height: 100%; width: 4%; background: linear-gradient(90deg, #48deff, #9cf7ff); box-shadow: 0 0 10px #48deff; transition: width 0.2s; }
+      #sr-loading .sr-tip { font-size: 13px; color: #9aa9c4; max-width: 80vw; min-height: 1.4em; }
+      #sr-loading .sr-err { color: #ff8a7a; font-size: 13px; max-width: 80vw; }
+      html[lang="fa"] #sr-loading .sr-sub, html[lang="fa"] #sr-loading .sr-tip { font-family: Tahoma, "Segoe UI", sans-serif; letter-spacing: 0; direction: rtl; }
+      @keyframes sr-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+      @media (prefers-reduced-motion: reduce) { #sr-loading .sr-jet { animation: none; } }
     </style>
   </head>
   <body>
     <div id="shell">
       <div id="stage"><canvas id="game" tabindex="0"></canvas></div>
     </div>
+    <div id="sr-loading" role="status" aria-live="polite">
+      <svg class="sr-jet" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges">
+        <rect x="7" y="1" width="2" height="12" fill="#c9d6ea" /><rect x="7" y="2" width="2" height="2" fill="#48deff" />
+        <rect x="2" y="7" width="12" height="2" fill="#9fb1cc" /><rect x="1" y="8" width="2" height="1" fill="#ff5a3c" />
+        <rect x="13" y="8" width="2" height="1" fill="#ff5a3c" /><rect x="5" y="12" width="6" height="1" fill="#9fb1cc" />
+        <rect x="7" y="13" width="2" height="2" fill="#ffb43c" />
+      </svg>
+      <h1>SKY REAPER</h1>
+      <div class="sr-sub" id="sr-sub">AIR · GROUND · NO MERCY</div>
+      <div class="sr-bar"><div class="sr-fill" id="sr-fill"></div></div>
+      <div class="sr-tip" id="sr-tip"></div>
+    </div>
+    <script>
+      // Loading screen: progress is driven by src/main.ts through window.__skyLoad(0..1) and closed by __skyLoaded().
+      (function () {
+        var fa = false;
+        try {
+          var q = new URLSearchParams(location.search).get("lang");
+          var saved = JSON.parse(localStorage.getItem("sky-reaper-save-v1") || "null");
+          var lang = q || (saved && saved.settings && saved.settings.language);
+          var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          fa = lang ? lang === "fa" : tz === "Asia/Tehran" || tz === "Iran";
+        } catch (e) {}
+        var tips = fa
+          ? ["مسلسل برای هواپیماها، بمب برای اهداف زمینی", "براکت نارنجی یعنی فقط بمب", "قفل موشک؟ منور بزن!"]
+          : ["GUNS HIT AIRCRAFT, BOMBS HIT GROUND TARGETS", "ORANGE BRACKETS = BOMBS ONLY", "MISSILE LOCK? DROP A FLARE!"];
+        if (fa) {
+          document.documentElement.lang = "fa";
+          document.getElementById("sr-sub").textContent = "جنگنده‌ی آسمان";
+        }
+        document.getElementById("sr-tip").textContent = tips[Math.floor(Math.random() * tips.length)];
+        var fill = document.getElementById("sr-fill");
+        window.__skyLoad = function (p) {
+          fill.style.width = Math.max(4, Math.min(100, Math.round(p * 100))) + "%";
+        };
+        window.__skyLoaded = function () {
+          window.__skyLoad(1);
+          var el = document.getElementById("sr-loading");
+          el.classList.add("done");
+          setTimeout(function () { el.remove(); }, 600);
+        };
+        window.__skyLoadError = function (msg) {
+          var d = document.createElement("div");
+          d.className = "sr-err";
+          d.textContent = (fa ? "خطا در بارگذاری. صفحه را دوباره باز کن." : "LOADING FAILED - PLEASE RELOAD.") + " (" + msg + ")";
+          document.getElementById("sr-loading").appendChild(d);
+        };
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

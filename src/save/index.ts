@@ -55,7 +55,24 @@ export function freshSave(): SaveData {
 }
 
 function freshSettings(): Settings {
-  return { ...DEFAULT_SETTINGS, bindings: cloneBindings(DEFAULT_BINDINGS) };
+  return { ...DEFAULT_SETTINGS, bindings: cloneBindings(DEFAULT_BINDINGS), language: detectLanguage() };
+}
+
+/**
+ * Default UI language when the player has never chosen one: Farsi for devices set to Iran time (Asia/Tehran, or the
+ * legacy "Iran" zone id), English otherwise. `?lang=fa|en` overrides it (testing). A saved choice always wins
+ * (sanitizeSettings keeps it).
+ */
+export function detectLanguage(): "en" | "fa" {
+  try {
+    const q = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("lang") : null;
+    if (q === "fa" || q === "en") return q;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz === "Asia/Tehran" || tz === "Iran") return "fa";
+  } catch {
+    /* no Intl / no window: fall through */
+  }
+  return "en";
 }
 
 export function cloneBindings(b: Bindings): Bindings {
@@ -105,7 +122,8 @@ function sanitizeSettings(v: unknown): Settings {
     showFps: bool(v.showFps, d.showFps),
     touchControls: tc === "auto" || tc === "on" || tc === "off" ? tc : d.touchControls,
     bindings: sanitizeBindings(v.bindings),
-    // round 5 (optional in the contract): old saves have neither field -> defaults (popups on, English)
+    // round 5 (optional in the contract): old saves have neither field -> defaults (popups on; language detected
+    // from the device time zone, see detectLanguage)
     scorePopups: bool(v.scorePopups, d.scorePopups ?? true),
     language: v.language === "fa" || v.language === "en" ? v.language : (d.language ?? "en"),
   };

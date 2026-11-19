@@ -263,18 +263,31 @@ function drawRecord(kit: SceneKit, svc: Services, x: number, y: number, w: numbe
   g.text(tr("common.version", { version: "0.1" }), x + w / 2, cy + 32, { size: 10, color: C.grey, anchor: "center", outline: 1 });
 }
 
+/** public source repository (shown on the credits screen) */
+export const REPO_URL = "github.com/NoobforAl/sky-reaper";
+
 function drawCredits(kit: SceneKit, svc: Services): void {
   const { g } = kit;
   const w = WIDE ? Math.min(820, GAME_W - 2 * M) : GAME_W - 48;
   const x = (GAME_W - w) / 2;
-  const y = WIDE ? 360 : 300;
-  const h = WIDE ? 380 : 440;
+  const y = WIDE ? 340 : 300;
+  const h = WIDE ? 420 : 500;
   if (WIDE) g.rect(0, 0, GAME_W, GAME_H, C.dark, 0.55);
   g.panel(x, y, w, h, { title: tr("menu.creditsTitle") });
-  const lines = [tr("menu.creditsLine1"), tr("menu.creditsLine2"), tr("menu.creditsLine3"), tr("menu.creditsLine4"), tr("menu.creditsLine5")];
+  const lines = [
+    tr("menu.creditsLine1"),
+    tr("menu.creditsLine2"),
+    tr("menu.creditsLine3"),
+    tr("menu.creditsLine4"),
+    tr("menu.creditsLine5"),
+    tr("menu.creditsLine6"),
+  ];
   const [c1, c2] = WIDE ? cols([0.45, 0.55], 32, x + 20, x + w - 20) : [{ x: x + 20, w: w - 40 }, { x: x + 20, w: w - 40 }];
-  lines.forEach((l, i) => g.text(l, c1!.x, y + 28 + i * 22, { size: 12, color: i === 0 ? C.amber : C.text, width: c1!.w }));
-  const ly = WIDE ? y + 28 : y + 140;
+  const step = WIDE ? 34 : 26;
+  lines.forEach((l, i) => g.text(l, c1!.x, y + 28 + i * step, { size: 12, color: i === 0 ? C.amber : C.text, width: c1!.w }));
+  // repo link (Latin, never translated): source code + ASSET_CREDITS.md with every asset and its license
+  g.text(REPO_URL, c1!.x, y + 28 + lines.length * step, { size: 12, color: C.cyan, width: c1!.w });
+  const ly = WIDE ? y + 28 : y + 28 + (lines.length + 1) * step + 16;
   g.text(tr("common.topPilots"), c2!.x, ly, { size: 14, color: C.cyan });
   const hs = svc.save.data.highScores;
   if (!hs.length) g.text(tr("common.noRecordsFly"), c2!.x, ly + 28, { size: 12, color: C.grey, width: c2!.w });
