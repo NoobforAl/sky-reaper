@@ -8,6 +8,7 @@ import {
   GAME_H,
   GAME_W,
   PIXEL_SCALE,
+  WIDE,
   SCENES,
   type AudioService,
   type BossController,
@@ -35,14 +36,14 @@ import {
   type SpriteInfo,
   type WorldAPI,
 } from "../contracts";
-import { PlayerController, type PlayerHost } from "../player";
+import { PlayerController, windPushFrac, type PlayerHost } from "../player";
 import { computeLoadout, type FireContext, type PlayerBulletSpawn } from "../weapons";
 import { ANIM_QA, BURN_SECS, WRECK_SMOKE_EVERY, bankSelect, debrisKey } from "./anim";
 import { FXDEF } from "./fxdefs";
 import { Pool, makeRng } from "./pool";
 import type { Bullet, EnemyRT, FlareDecoy, Fx, FxInternalKind, Hazard, Pickup } from "./types";
 import { collideAll, updateBullets } from "./bullets";
-import { enemyKeys } from "./spritekeys";
+import { enemyKeys, enemyKeysForBiome } from "./spritekeys";
 import { hasKey, t } from "../i18n";
 
 export const WORLD_TUNING = {
@@ -58,14 +59,29 @@ export const WORLD_TUNING = {
    * per-chapter enemy damage multiplier (CHAPTER_IDS order: pacific, jungle, desert, arctic, citadel).
    * Chapter 1 is the tutorial and stays gentle; the later chapters ramp so the player side scales with the campaign.
    */
-  /** BALANCE_SPEC D1 [0.9, 1.2, 1.3, 1.4, 1.5] + section 11 knobs after round-5 bot runs: ch2 1.2 -> 1.3 (A1), ch3 1.3 -> 1.4 (A2) */
-  chapterDmg: [0.9, 1.3, 1.4, 1.4, 1.5],
+  /**
+   * BALANCE_SPEC D1 [0.9, 1.2, 1.3, 1.4, 1.5] + section 11 knobs after round-5 bot runs: ch2 1.2 -> 1.3 (A1), ch3 1.3 -> 1.4 (A2).
+   * Round 6 (QA R5-1, a 0-upgrade novice cleared the campaign): 4 bot iterations (tests/qa/playtest.mjs --chdmg/--sustain),
+   * [0.9,1.3,1.7,1.9,2.1] -> [.., 3.0, 3.1, 3.3] -> [.., 3.8, ..] -> this. Ch3 is the upgrade gate (a novice with 0
+   * upgrades fails 2/4, the section-11 budget novice wins with 1-2 deaths); ch4/ch5 were tuned for the budget novice
+   * (1-2 deaths at 3.1 / 3.3); 0-upgrade ch4/ch5 at these values is not bot-verified yet (round-6 QA).
+   */
+  chapterDmg: [0.9, 1.3, 4.6, 3.1, 3.3],
   /**
    * BALANCE_SPEC P4: per-chapter multiplier on enemy drop chances. In-run power is the biggest DPS lever (x4.5),
    * so it gets scarcer later on (a novice should reach the boss at power 3-4); repair / shield drops thin out too.
    */
   powerDropMul: [1, 0.7, 0.55, 0.45, 0.4],
-  sustainDropMul: [1, 1, 0.7, 0.6, 0.5],
+  /** round 6 (R5-1): repair / shield drops thinned from ch3 on (was [1, 1, 0.7, 0.6, 0.5]) */
+  sustainDropMul: [1, 1, 0.25, 0.35, 0.3],
+  /**
+   * QA R5-2: on wide fields the bot / player ends runs at power 1-3 (pickups scatter over 1520u), so wide boss fights ran
+   * ~110 s. Power drops x powerWideMul there, and loose P pickups drift toward the centre band (|x - mid| <=
+   * powerBandHalf game units) at powerDriftSpeed u/s.
+   */
+  powerWideMul: 1.3,
+  powerBandHalf: 260,
+  powerDriftSpeed: 55,
   /** safety net (docs/PERF_BOMBERS.md #5): carpet-bomb volleys beyond this many live enemy hazards are skipped */
   maxEnemyHazards: 36,
   /**
@@ -92,6 +108,14 @@ export const WORLD_TUNING = {
   spdSlope: 0.08,
   scrollEase: 220,
   comboWindow: 2,
+  /**
+   * round 6 item 14 wind. `setWind(ax)` sets a target; the live `wind` eases toward it with time constant easeTau
+   * (about 95 % after 3*tau = 0.3 s). The player module maps it to a drift velocity (PLAYER_TUNING.windFull /
+   * windPushFrac: |ax| >= 60 pushes at 70 % of max speed). The renderer shows the gust telegraph (arrow, streaks, sand
+   * veil) while |wind| / windFull >= telegraphMin, or while a telegraph set by `telegraphWind(dir, sec)` is running.
+   */
+  windEaseTau: 0.1,
+  windTelegraphMin: 0.25,
   comboStep: 0.1,
   comboMax: 2,
   flashEnemy: 0.06,
@@ -109,6 +133,13 @@ export const WORLD_TUNING = {
   enemyCullSide: 220,
   enemyCullTop: 700,
 } as const;
+
+/** QA-only per-chapter table overrides (window.__skyBalance, read once per World) */
+interface QaBalance {
+  chapterDmg?: number[];
+  sustainDropMul?: number[];
+  powerDropMul?: number[];
+}
 
 const EMPTY_OPTS: EnemySpawnOpts = {};
 const NULL_DEF: EnemyDef = {
@@ -235,8 +266,19 @@ export class World implements WorldAPI, FireContext, PlayerHost {
   scrollY = 0;
   scrollSpeed: number;
   private scrollTarget: number;
+  /** live (eased) wind, units/s^2 scale of setWind; read by the player controller and the renderer */
   wind = 0;
+  /** last value passed to setWind */
+  windTarget = 0;
+  /** upcoming-gust telegraph set by telegraphWind(): seconds left and direction (-1 left, +1 right) */
+  windTeleT = 0;
+  windTeleDir = 0;
+  /** read-only snapshot for levels / QA (`world.windInfo`); updated in step(), never reallocated */
+  private readonly windSnap = { ax: 0, target: 0, push: 0, telegraph: 0, telegraphDir: 0 };
   readonly difficulty: number;
+  private readonly chapterDmgT: ReadonlyArray<number>;
+  private readonly sustainT: ReadonlyArray<number>;
+  private readonly powerT: ReadonlyArray<number>;
   readonly dmgScale: number;
   readonly spdScale: number;
   god = false;
@@ -318,7 +360,12 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     const settings = init.svc.save.data.settings;
     this.difficulty = settings.difficulty ?? 1;
     const chIdx = (CHAPTER_IDS as readonly string[]).indexOf(init.chapter.id);
-    this.dmgScale = (T.dmgBase + T.dmgSlope * this.difficulty) * (T.chapterDmg[chIdx] ?? 1);
+    // QA hook (tests/qa/playtest.mjs --chdmg / --sustain / --powermul): window.__skyBalance overrides the per-chapter tables
+    const qb = typeof window !== "undefined" ? (window as unknown as { __skyBalance?: QaBalance }).__skyBalance : undefined;
+    this.chapterDmgT = qb?.chapterDmg ?? T.chapterDmg;
+    this.sustainT = qb?.sustainDropMul ?? T.sustainDropMul;
+    this.powerT = qb?.powerDropMul ?? T.powerDropMul;
+    this.dmgScale = (T.dmgBase + T.dmgSlope * this.difficulty) * (this.chapterDmgT[chIdx] ?? 1);
     this.spdScale = T.spdBase + T.spdSlope * this.difficulty;
     this.god = !!init.params.godMode;
     this.scrollSpeed = this.scrollTarget = init.chapter.scrollSpeed;
@@ -426,8 +473,25 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     this.scrollTarget = v;
   }
   setWind(ax: number): void {
-    this.wind = ax;
+    this.windTarget = Number.isFinite(ax) ? ax : 0;
   }
+  /**
+   * Optional (not yet in WorldAPI, see CONTRACT_REQUESTS): announce a gust `sec` seconds ahead. The renderer blinks the
+   * HUD arrow toward `dir` and starts sand streaks before setWind() actually pushes.
+   */
+  telegraphWind(dir: number, sec = 1): void {
+    this.windTeleDir = dir < 0 ? -1 : 1;
+    this.windTeleT = Math.max(0, sec);
+  }
+  /**
+   * Current wind, read-only: ax = live eased value, target = last setWind, push = drift as a fraction of max speed
+   * (signed, |push| <= PLAYER_TUNING.windPushFrac), telegraph = seconds left on a telegraphWind() announcement.
+   */
+  get windInfo(): Readonly<{ ax: number; target: number; push: number; telegraph: number; telegraphDir: number }> {
+    return this.windSnap;
+  }
+  /** bound sprite-registry lookup (spawn-time palette variants, spritekeys.ts) */
+  readonly hasSprite = (key: string): boolean => this.svc.sprites.has(key);
   shake(power: number, ms: number): void {
     if (!this.settings.screenShake) return;
     const t = ms / 1000;
@@ -493,6 +557,17 @@ export class World implements WorldAPI, FireContext, PlayerHost {
       if (this.banner.t * 1000 >= this.banner.ms) this.banner = null;
     }
     if (this.lockSoundCd > 0) this.lockSoundCd -= dt;
+
+    // wind easing (exponential, ~0.3 s to 95 %) + telegraph clock
+    const wd = this.windTarget - this.wind;
+    this.wind = Math.abs(wd) < 0.01 ? this.windTarget : this.wind + wd * Math.min(1, dt / T.windEaseTau);
+    if (this.windTeleT > 0) this.windTeleT = Math.max(0, this.windTeleT - dt);
+    const ws = this.windSnap;
+    ws.ax = this.wind;
+    ws.target = this.windTarget;
+    ws.push = windPushFrac(this.wind);
+    ws.telegraph = this.windTeleT;
+    ws.telegraphDir = this.windTeleDir;
 
     // 1. player
     if (this.state === "complete") this.pc.state.invuln = Math.max(this.pc.state.invuln, 0.5);
@@ -701,7 +776,7 @@ export class World implements WorldAPI, FireContext, PlayerHost {
     e.bankSel = 0;
     e.fireT = 99;
     e.fireDir = 90;
-    e.keys = enemyKeys(def);
+    e.keys = o.bossId ? enemyKeys(def) : enemyKeysForBiome(def, this.chapter.biome, this.hasSprite);
     e.bossId = o.bossId;
     e.invuln = false;
     e.opts = o;
@@ -965,8 +1040,8 @@ export class World implements WorldAPI, FireContext, PlayerHost {
   private dropMul(kind: PickupKind): number {
     const T = WORLD_TUNING;
     const ci = this.chapterIndex;
-    if (kind === "power") return T.powerDropMul[ci] ?? 1;
-    if (kind === "repair" || kind === "shield") return T.sustainDropMul[ci] ?? 1;
+    if (kind === "power") return (this.powerT[ci] ?? 1) * (WIDE ? T.powerWideMul : 1);
+    if (kind === "repair" || kind === "shield") return this.sustainT[ci] ?? 1;
     return 1;
   }
 
@@ -1663,6 +1738,11 @@ export class World implements WorldAPI, FireContext, PlayerHost {
         }
       }
       k.x += k.vx * dt;
+      if (WIDE && k.kind === "power" && !k.magnetized) {
+        const off = k.x - GAME_W / 2;
+        if (off > T.powerBandHalf) k.x -= T.powerDriftSpeed * dt;
+        else if (off < -T.powerBandHalf) k.x += T.powerDriftSpeed * dt;
+      }
       k.y += (k.vy + this.scrollSpeed * 0.35) * dt;
       if (k.y > GAME_H + 30 || k.x < -30 || k.x > GAME_W + 30) this.pickups.releaseAt(i);
     }

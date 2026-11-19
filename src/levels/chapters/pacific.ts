@@ -128,7 +128,8 @@ export function pacific(): ChapterScript {
       ],
       reward: 500,
       // round 5: M1 starting guess gold / ace x1.25 for the THREAT score multiplier (re-derive from round-5 QA)
-      medalScores: medals([25500, 34500, 54000, 63000], 1.08),
+      // round 6 (QA R5-4): ACE +10 % on portrait (novice / human reached 64-65k); no-dodge 54.3k must stay under GOLD
+      medalScores: medals([27500, 37500, 58500, 69000], 1.08),
     },
     features: tl.features,
   };

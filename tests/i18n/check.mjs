@@ -9,7 +9,8 @@
  * Fails on: missing/extra keys, placeholder mismatch, fa length > 1.35 x en + 4, banned formal/literary/religious/
  * violent words, vulgar words from tests/i18n/blocklist.json (base64), Latin letters in fa outside the allowed tokens,
  * ZWNJ misuse (at word start/end, doubled, "می " without ZWNJ), Arabic ي / ك instead of Persian ی / ک,
- * Arabic script in en values (except the language-name keys).
+ * Arabic script in en values (except the language-name keys), and any "+n" / "-n" in the fa output of t() that is not
+ * led by an LRM (QA R5-5: the sign would render on the wrong side of the number in RTL text).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -190,6 +191,46 @@ for (const k of enKeys) {
   if (new RegExp(`(^|[\\s(«])(ن?می) (?=[${AR}])`).test(f)) err(k, "«می» followed by a space: use ZWNJ (می‌کند)");
 }
 
+// ------------------------------------------------------------------ bidi of signed numbers (QA R5-5)
+// Every "+n" / "-n" that t() produces in Farsi must start with U+200E (LRM), otherwise the RTL paragraph shows the
+// sign on the far side of the number ("15+"). Runs t() itself (bundled from src/i18n/index.ts) with every number
+// placeholder filled, with Persian digits on and off. Skipped when I18N_LOCALES_DIR points at another table copy.
+let signedChecked = 0;
+if (!process.env.I18N_LOCALES_DIR) {
+  let i18n = null;
+  try {
+    const require = createRequire(path.join(ROOT, "package.json"));
+    const esbuild = require("esbuild");
+    const out = esbuild.buildSync({ entryPoints: [path.join(ROOT, "src/i18n/index.ts")], bundle: true, write: false, format: "esm", platform: "neutral", target: "es2022", logLevel: "silent" });
+    i18n = await import("data:text/javascript;base64," + Buffer.from(out.outputFiles[0].text, "utf8").toString("base64"));
+  } catch (e) {
+    err("(bidi)", "could not bundle src/i18n/index.ts for the signed-number check: " + (e?.message ?? e));
+  }
+  if (i18n) {
+    const LRM = "\u200E";
+    const SIGN = /([+\-])(?=[0-9\u06F0-\u06F9])/g;
+    for (const pd of [true, false]) {
+      i18n.setPersianDigits(pd);
+      for (const k of faKeys) {
+        if (typeof fa[k] !== "string" || !/[+\-]/.test(fa[k])) continue;
+        const params = {};
+        for (const p of placeholders(fa[k])) params[p] = 15;
+        const s = i18n.t(k, params, "fa");
+        for (const m of s.matchAll(SIGN)) {
+          const prev = s[m.index - 1] ?? "";
+          if (/[0-9\u06F0-\u06F9]/.test(prev)) continue; // a range like 1-3 stays one number run
+          signedChecked++;
+          if (prev !== LRM) err(k, `signed number without LRM in fa output «${s}» (renders as «15+»), see bidiSigned() in src/i18n/index.ts`);
+        }
+      }
+    }
+    i18n.setPersianDigits(true);
+    // the helper itself
+    const cases = [["+15 سکه", LRM + "+15 سکه"], ["-۰٫۸ ثانیه", LRM + "-۰٫۸ ثانیه"], ["۱-۳", "۱-۳"], [LRM + "+5", LRM + "+5"], ["x1.5", "x1.5"]];
+    for (const [a, b] of cases) if (i18n.bidiSigned(a) !== b) err("(bidi)", `bidiSigned(${JSON.stringify(a)}) = ${JSON.stringify(i18n.bidiSigned(a))}, expected ${JSON.stringify(b)}`);
+  }
+}
+
 // ------------------------------------------------------------------ report
 if (VERBOSE) {
   rows.sort((a, b) => b[3] - a[3]);
@@ -198,7 +239,7 @@ if (VERBOSE) {
 const avg = nRatio ? sumRatio / nRatio : 0;
 console.log(
   `[i18n check] ${enKeys.length} en keys, ${faKeys.length} fa keys, blocklist ${blocklist.length} entries, ` +
-    `fa/en length ratio avg ${avg.toFixed(2)} max ${maxRatio.toFixed(2)} (${maxKey})`,
+    `fa/en length ratio avg ${avg.toFixed(2)} max ${maxRatio.toFixed(2)} (${maxKey}), ${signedChecked} signed numbers bidi-checked`,
 );
 if (errors.length) {
   console.error(`[i18n check] FAIL: ${errors.length} problem(s)`);

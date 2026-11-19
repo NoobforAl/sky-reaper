@@ -15,7 +15,7 @@
  * drawText / formatText / getBitmapFont for the Latin path.
  */
 import type { Anchor, KAPLAYCtx, Texture, Vec2 } from "kaplay";
-import { getLocale, hasArabicScript, formatNumber, onLocaleChange, type NumberFormatOpts } from "./index";
+import { getLocale, hasArabicScript, formatNumber, onLocaleChange, bidiSigned, type NumberFormatOpts } from "./index";
 import { FA_FONT_STACK } from "./font";
 
 export type RGB = [number, number, number];
@@ -332,6 +332,7 @@ export class TextService {
     ctx.font = font;
     const rtl = o.dir ? o.dir === "rtl" : baseRtl(str);
     ctx.direction = rtl ? "rtl" : "ltr";
+    if (rtl) str = bidiSigned(str); // "+15" keeps its sign on the left in RTL paragraphs (QA R5-5)
     const mw = (s: string) => ctx.measureText(s).width;
     const pad = Math.ceil(ol.w + (ol.shadow && ol.w > 0 ? 1 : 0));
     const lines: string[] = [];

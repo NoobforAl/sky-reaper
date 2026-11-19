@@ -30,16 +30,19 @@ export function jungle(): ChapterScript {
   tl.at(31).spawn("gunboat", LC).spawn("gunboat", RC, undefined, -100);
   tl.at(34).pickup("power", C);
   tl.at(35).arc("fighter_basic", 5, C, { dx: 110 });
-  tl.at(38).spawns("aa_turret", [L, R]).spawn("missile_launcher", C, undefined, -80);
+  // round 6: launcher moved off the river (it sat on the water at C)
+  tl.at(38).spawns("aa_turret", [L, R]).spawn("missile_launcher", C + 80, undefined, -80);
   tl.at(41).stream("interceptor", 3, LC, 700);
 
   // ---- hidden base #1
   tl.at(43).pickup("bomb", LC).pickup("bomb", RC);
-  // QA R4-4: one more bomb ~2 s before the first base pair, dropped in its lane
-  tl.at(44).pickup("bomb", L + 50);
+  // QA R4-4 / R5-7 (round 6): the first base pair moved in from the edges toward the centre (the river runs left of
+  // centre here, so both sit on the right bank: base just right of centre, hangar beside it), with a bomb dropped in
+  // the base's lane ~2 s before; the AA guns moved off the water (one on the left bank, one behind the base)
+  tl.at(44).pickup("bomb", C + 60);
   tl.at(45).banner("HIDDEN BASE", "BOMB THE HANGARS", 2200, { key: "wave.jungle.hiddenBase", subKey: "wave.jungle.hiddenBase.sub" });
-  tl.at(46).spawn("military_base", L + 50).spawn("hangar", R - 60, undefined, -60);
-  tl.at(46.5).spawns("aa_turret", [L + 110, R - 120]);
+  tl.at(46).spawn("military_base", C + 60).spawn("hangar", R + 20, undefined, -60);
+  tl.at(46.5).spawn("aa_turret", L + 10).spawn("aa_turret", C + 60, undefined, -150);
   tl.at(48).pickup("bomb", LC).pickup("bomb", RC);
   tl.at(49).vee("fighter_basic", 5, C, { y: -80 });
   tl.at(52).spawn("radar_station", C, undefined, -60).spawns("tank_light", [LC, RC]);
@@ -78,8 +81,9 @@ export function jungle(): ChapterScript {
   tl.at(117).pickup("bomb", LC).pickup("bomb", RC);
   tl.at(118).pickup("bomb", C);
   tl.at(119).banner("JUNGLE STRONGHOLD", "BOMB THE BASES", 2000, { key: "wave.jungle.stronghold", subKey: "wave.jungle.stronghold.sub" });
-  tl.at(120).spawn("military_base", RC).spawn("hangar", LC, undefined, -80);
-  tl.at(120.5).spawns("missile_launcher", [C]).spawns("aa_turret", [L + 10, R - 10]);
+  // round 6: the hangar sat on the river at LC; it now stands beside the base on the right bank
+  tl.at(120).spawn("military_base", C + 60).spawn("hangar", R + 15, undefined, -80);
+  tl.at(120.5).spawns("missile_launcher", [C]).spawn("aa_turret", L + 10).spawn("aa_turret", C + 60, undefined, -170);
   tl.at(121).spawn("radar_station", R - 60, undefined, -170);
   tl.at(122).pickup("bomb", C).pickup("bomb", LC);
   tl.at(124).vee("fighter_basic", 5, C, { y: -60 });
@@ -132,7 +136,8 @@ export function jungle(): ChapterScript {
       // round 5: R1 reward 700 -> 750; QA R4-3 wide factor 0.95 -> 1.1; M1 starting guess (gold / ace x1.25 for THREAT
       // score, BALANCE_SPEC §8): re-derive from round-5 QA medians
       reward: 750,
-      medalScores: medals([32000, 43500, 68000, 80000], 1.1),
+      // round 6 (QA R5-4): portrait ACE +10 % (novice 83k reached it), wide factor 1.1 -> 0.95 (wide median 74k)
+      medalScores: medals([35000, 47500, 75000, 88000], 0.95),
     },
     features: tl.features,
   };

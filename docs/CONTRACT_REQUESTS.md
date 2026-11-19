@@ -102,3 +102,31 @@ jungle "Destroy 65% of enemies" objective) mean the same on both layouts. Kills 
 `gatedSec: number[]` (seconds each phase spent hardened by the min-phase gate, QA R4-2) on the same object. Request:
 optionally document `gatedSec?: number[]` on `BossHudInfo` so QA tools can read it without a cast. No change needed
 for the game to work.
+
+## engine (round 6, item 14) — wind read-out + gust telegraph on WorldAPI (FYI Level + QA)
+- Wind scale (src/player PLAYER_TUNING.windFull / windPushFrac): the drift velocity is
+  `clamp(ax / 60, -1, 1) * 0.7 * maxSpeed` (horizontal, x the wide-field speed multiplier). So `setWind(60)` or more
+  pushes right at 70 % of max speed (the player can still counter-steer at 30 %), `setWind(30)` at 35 %, arctic-style
+  `±20` at about 23 %. `setWind` sets a target; the engine eases the live value over ~0.3 s and clamps the ship to the field.
+- The world renderer draws the gust telegraph by itself whenever |push| >= 25 % of full (0.25 * 60 = |ax| 15): sand
+  streaks in the gust direction (snow-white in the arctic biome), a top-centre arrow with 1-3 strength pips and a sand
+  veil (alpha up to 0.2 x strength). Levels do not need to draw anything extra.
+- Request: add to WorldAPI (implemented on the concrete World today; use a cast until then):
+  - `readonly windInfo: Readonly<{ ax: number; target: number; push: number; telegraph: number; telegraphDir: number }>`
+    (ax = live eased value, target = last setWind, push = signed fraction of max speed, telegraph = seconds left);
+  - `telegraphWind(dir: -1 | 1, sec?: number): void` — call ~1 s BEFORE `setWind` for a gust: the arrow blinks toward
+    `dir` and light streaks start, so each gust is announced ahead (round3 #14). Desert/arctic events should use it.
+
+## level (round 6) — gusts, river boats, citadel layout (FYI Engine + Enemy)
+- **Gusts (#14):** `src/levels/runner.ts` announces each authored gust 1 s ahead with `world.telegraphWind(dir, sec)` (duck-typed,
+  so please add `telegraphWind?(dir: number, sec?: number): void` to `WorldAPI`), then calls `setWind(ax)` with
+  `ax = push / PLAYER_TUNING.windPushFrac * PLAYER_TUNING.windFull` (runner `windForPush`), i.e. the Engine's round-6 mapping
+  is applied 1:1 (no extra multiplier on top, or desert gusts exceed 70 % of max speed). Desert gusts push 0.55-0.68 of max
+  speed for 2-3.5 s, arctic 0.30-0.34; the ambient sandstorm / blizzard sway is now ~0.12 / 0.08. Measured on the scratch
+  build: desert drift 0.55-0.63 with `windInfo.telegraph` running ~1 s before each push.
+- **River boats (#12):** in jungle / arctic the runner shifts every gunboat / destroyer each step by the bend of the river under
+  it and clamps the hull inside the drawn water (`src/levels/naval.ts`). It also shifts `e.data.mv.x0` (the sine base in
+  `src/enemies/movement.ts`) so the weave follows the river. Enemy agent: please keep `data.mv.x0` as the sine base (or tell
+  the level agent if it moves).
+- **Citadel (#11):** stationary ground units in the citadel are snapped onto foundation pads inside the base plots and spawned
+  with `opts.data.noSeparate = true` (they must stay on their pads); ground vehicles are moved onto the runway lanes / avenues.

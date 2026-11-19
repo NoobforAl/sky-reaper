@@ -11,7 +11,7 @@ import { DESIGN_W, PIXEL_SCALE, WIDE, type EnemySpawnOpts, type LevelEvent, type
 import { enemySystem } from "../enemies";
 import type { BannerI18n } from "./i18n";
 import { OVERLAP_K } from "./spacing";
-import type { FeatureCue, FeatureKind } from "./types";
+import type { FeatureCue, FeatureKind, GustCue } from "./types";
 
 /**
  * Smallest stagger (ms) for a same-spot stream so consecutive units do not start on top of each other (round 5, #7):
@@ -90,6 +90,8 @@ export const LANES = { L, C, R, LC: (L + C) / 2, RC: (R + C) / 2 } as const;
 export class TL {
   readonly events: LevelEvent[] = [];
   readonly features: FeatureCue[] = [];
+  /** round 6: authored wind gusts (see GustCue) */
+  readonly gusts: GustCue[] = [];
   t = 0;
   /** default spawn opts merged into every spawn (e.g. chapter-wide hpScale) */
   private defaults: EnemySpawnOpts = {};
@@ -202,6 +204,11 @@ export class TL {
   }
   boss(boss: string): this {
     this.events.push({ t: this.t, type: "boss", boss });
+    return this;
+  }
+  /** wind gust starting at the cursor: dir -1 left / +1 right, `dur` s, peak drift `push` x player max speed */
+  gust(dir: -1 | 1, dur: number, push: number): this {
+    this.gusts.push({ t: this.t, dir, dur, push });
     return this;
   }
   feature(kind: FeatureKind, x: number, len: number): this {

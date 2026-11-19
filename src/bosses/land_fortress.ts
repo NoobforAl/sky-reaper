@@ -5,7 +5,7 @@
  *  P3  core: 4-arm spiral | carpet bombing walk | RAM: if any tread is intact the fortress lurches forward (1 s telegraph)
  *  Parts change attacks: both treads destroyed -> immobile, no ram; big turret destroyed -> core takes over artillery.
  */
-import { GAME_W, type WorldAPI } from "../contracts";
+import { GAME_W, WIDE, type WorldAPI } from "../contracts";
 import { tr } from "../levels/i18n";
 import { BP } from "./attacks";
 import { BossBase, roam, type PartRT } from "./framework";
@@ -17,7 +17,9 @@ export class LandFortressBoss extends BossBase {
   private immobile = false;
 
   constructor(world: WorldAPI) {
-    super("land_fortress", world, 1.75); // round 5 B1: 1 -> 1.75
+    // round 5 B1: 1 -> 1.75; round 6 (QA R5-3): desert portrait boss pass ran 36.7 s (< 40 s). +0.1 gave 36.8 s (P1 / P2
+    // sit on the 10 s phase floor, only P3 grows) -> 2.2 on the 480 field
+    super("land_fortress", world, WIDE ? 1.75 : 2.2);
     this.holdY = 220;
     this.entrySec = 4.5;
     this.addPart("tread", "tread_l", -128, 0);

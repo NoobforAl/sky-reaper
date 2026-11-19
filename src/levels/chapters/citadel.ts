@@ -54,7 +54,8 @@ export function citadel(): ChapterScript {
   tl.at(76).pickup("bomb", LC).pickup("bomb", RC);
   tl.at(78).stream("fighter_basic", 7, LC, 260);
   tl.at(81).spawn("bomber", C).line("fighter_heavy", 2, C, { dx: 160, y: -100 });
-  tl.at(85).convoy(R - 60, 5, 1100);
+  // round 6 (#11): convoys and the train run down the central runway (the base layout has no other free lane)
+  tl.at(85).convoy(C, 5, 1100);
   tl.at(88).spawns("helicopter_elite", [L + 30, LC + 20]);
   tl.at(91).arc("fighter_basic", 9, C, { dx: 150 });
   // round 5 balance P5: the t 95 power pickup is gone (2 scripted power-ups left)
@@ -74,8 +75,8 @@ export function citadel(): ChapterScript {
 
   // ---- armoured train through the citadel yards
   tl.at(128).banner("ARMOURED TRAIN", undefined, 2000, { key: "wave.citadel.train" });
-  tl.at(129).armouredTrain(L + 70, 8);
-  tl.at(130).pickup("bomb", L + 70).pickup("bomb", LC);
+  tl.at(129).armouredTrain(C, 8);
+  tl.at(130).pickup("bomb", C).pickup("bomb", LC);
   tl.at(132).spawns("citadel_turret", [RC, R - 20]);
   tl.at(134).vee("fighter_basic_elite", 9, RC, { dx: 30, dy: 36 });
   tl.at(138).spawn("missile_carrier", R - 60);
@@ -125,7 +126,8 @@ export function citadel(): ChapterScript {
       // round 5: R1 reward 1500 -> 1600; QA R4-3 ACE 122000 -> 130000 and wide factor 0.85 -> 0.95; M1 starting guess
       // gold / ace x1.25 on top (re-derive from round-5 QA medians)
       reward: 1600,
-      medalScores: medals([61000, 83000, 129500, 162500], 0.95),
+      // round 6 (QA R5-4): wide factor 0.95 -> 0.6 (wide median 71k vs portrait 127k; wide ACE was unreachable)
+      medalScores: medals([61000, 83000, 129500, 162500], 0.6),
     },
     features: tl.features,
   };

@@ -6,7 +6,7 @@
  *  Parts change attacks: gunpods gone -> chin needle gun; missilepods gone -> heavy orbs; tail gone -> the gunship
  *  loses stability: wobbles and fires rotating crosses while spinning.
  */
-import { GAME_W, X_SCALE, type WorldAPI } from "../contracts";
+import { GAME_W, WIDE, X_SCALE, type WorldAPI } from "../contracts";
 import { tr } from "../levels/i18n";
 import { BP } from "./attacks";
 import { BossBase, roam, type PartRT } from "./framework";
@@ -19,7 +19,11 @@ export class HeliGunshipBoss extends BossBase {
   private tailLost = false;
 
   constructor(world: WorldAPI) {
-    super("heli_gunship", world, 1.7); // round 5 B1 1.85, minus the A5 knob step (-0.15): budget pass ran 67 s
+    // round 5 B1 1.85, minus the A5 knob step (-0.15): budget pass ran 67 s. Round 6 (QA R5-3): jungle wide ran 83.5 s
+    // with P1 26-30 s (pods slow to kill at power 4) -> 1.55, and 1.2 on wide (wide pass at 1.55: 79 s, P2 20 s, P3 32 s)
+    super("heli_gunship", world, WIDE ? 1.2 : 1.55);
+    // round 6 (QA R5-3): P1 ended on the 30 s core-shield timer in both layouts -> 22 s for the gunship
+    this.shieldTimeout = 22;
     this.holdY = 190;
     this.entrySec = 3;
     this.addPart("body", "body", 0, 0, true);

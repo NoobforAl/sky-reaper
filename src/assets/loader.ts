@@ -4,7 +4,7 @@
  * broken file never reaches KAPLAY's loader (which would show its crash screen). Missing keys => registry.has() false
  * => the renderer falls back to coloured shapes.
  */
-import type { KAPLAYCtx } from "kaplay";
+import type { KAPLAYCtx, SpriteAtlasData } from "kaplay";
 import type { AssetManifest, SpriteInfo, SpriteRegistry } from "../contracts";
 import { FONT } from "../contracts";
 
@@ -15,6 +15,12 @@ interface FontGrid {
   gridH: number;
   chars: string;
   filter?: "linear" | "nearest";
+}
+
+/** a strip packed into a shared atlas PNG: `x`/`y` = top-left of the strip inside `src` (scripts/art/build.mjs) */
+interface AtlasSprite extends SpriteInfo {
+  x?: number;
+  y?: number;
 }
 
 /** manifest.json carries the font grids alongside the contract fields */
@@ -91,8 +97,47 @@ export async function loadSpritesAndFont(k: KAPLAYCtx): Promise<LoadResult> {
     return { registry, loaded: 0, failed, fontLoaded: false };
   }
 
+  // packed strips (x/y present): one image + one loadSpriteAtlas call per atlas file
+  const packed = new Map<string, AtlasSprite[]>();
+  const single: SpriteInfo[] = [];
+  for (const s of manifest.sprites as AtlasSprite[]) {
+    if (typeof s.x === "number" && typeof s.y === "number") {
+      const list = packed.get(s.src);
+      if (list) list.push(s);
+      else packed.set(s.src, [s]);
+    } else single.push(s);
+  }
   await Promise.all(
-    manifest.sprites.map(async (s) => {
+    [...packed].map(async ([src, list]) => {
+      const img = await loadImage(assetUrl(src));
+      if (!img) {
+        for (const s of list) failed.push(s.key);
+        return;
+      }
+      try {
+        const data: SpriteAtlasData = {};
+        for (const s of list) {
+          const frames = Math.max(1, s.frames | 0);
+          data[s.key] = {
+            x: s.x ?? 0,
+            y: s.y ?? 0,
+            width: s.frameW * frames,
+            height: s.frameH,
+            sliceX: frames,
+            anims: frames > 1 ? { loop: { from: 0, to: frames - 1, loop: s.loop !== false, speed: s.fps ?? 8 } } : undefined,
+          };
+        }
+        k.loadSpriteAtlas(img, data);
+        for (const s of list) infos.set(s.key, s);
+      } catch (err) {
+        for (const s of list) failed.push(s.key);
+        console.warn("[assets] loadSpriteAtlas failed", src, err);
+      }
+    }),
+  );
+
+  await Promise.all(
+    single.map(async (s) => {
       const img = await loadImage(assetUrl(s.src));
       if (!img) {
         failed.push(s.key);

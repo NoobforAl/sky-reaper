@@ -14,6 +14,32 @@
 import type { Color, DrawEllipseOpt, DrawRectOpt, DrawSpriteOpt, KAPLAYCtx, SpriteData, Vec2 } from "kaplay";
 import { DESIGN_W, GAME_H, GAME_W, PIXEL_SCALE, X_SCALE, type BackgroundRenderer, type Biome, type ChapterDef } from "../../contracts";
 import type { FeatureCue, FeatureKind } from "../types";
+import { CIT, CitadelLayout } from "./citadel";
+
+export { CIT, CitadelLayout } from "./citadel";
+
+/** round 6 (#11): citadel base-building kit (docs/ASSET_MANIFEST.md "Citadel round 6") */
+const CIT_KEYS = [
+  "cit_floor_concrete",
+  "cit_floor_steel",
+  "cit_runway_v",
+  "cit_road_v",
+  "cit_road_h",
+  "cit_road_cross",
+  "cit_wall_v",
+  "cit_wall_h",
+  "cit_wall_tv",
+  "cit_wall_end",
+  "cit_pad_s",
+  "cit_pad_m",
+  "cit_pad_l",
+  "cit_pad_hangar",
+  "cit_pipe_v",
+  "cit_helipad",
+  "cit_mark_hazard",
+] as const;
+type CitKey = (typeof CIT_KEYS)[number];
+const PAD_KEYS: CitKey[] = ["cit_pad_s", "cit_pad_m", "cit_pad_l", "cit_pad_hangar"];
 
 type RGB = [number, number, number];
 
@@ -111,6 +137,16 @@ export function riverX(wy: number): number {
 export function riverW(wy: number): number {
   return 104 + 22 * Math.sin(wy / 410 + 0.7);
 }
+/** the arctic open-water lead is drawn narrower than the jungle river */
+export const ICY_RIVER_W = 0.75;
+/** biomes whose naval units ride the river / lead (round 6, #12) */
+export function hasRiver(biome: string): boolean {
+  return biome === "jungle" || biome === "arctic";
+}
+/** half width of the DRAWN water at world-y `wy` (jungle river or arctic lead; banks excluded) */
+export function waterHalfW(biome: string, wy: number): number {
+  return (riverW(wy) * (biome === "arctic" ? ICY_RIVER_W : 1)) / 2;
+}
 
 interface Feature {
   kind: FeatureKind;
@@ -195,9 +231,13 @@ export class BiomeBackground implements BackgroundRenderer {
   private cloudKeys: string[] = [];
   private tileA = "";
   private tileB = "";
+  /** round 6: citadel base layout (shared with the runner, which snaps structures onto its plots) */
+  private cit: CitadelLayout | null;
+  private citKit = false;
 
-  constructor(chapter: ChapterDef, features: Array<{ kind: FeatureKind; x: number; wy0: number; wy1: number }> = []) {
+  constructor(chapter: ChapterDef, features: Array<{ kind: FeatureKind; x: number; wy0: number; wy1: number }> = [], citadel: CitadelLayout | null = null) {
     this.biome = chapter.biome;
+    this.cit = chapter.biome === "citadel" ? (citadel ?? new CitadelLayout()) : null;
     this.st = styleFor(chapter.biome, chapter.palette);
     this.features = features.map((f) => ({ ...f }));
     this.tileA = `bgtile_${this.biome}_a`;
@@ -278,6 +318,10 @@ export class BiomeBackground implements BackgroundRenderer {
     check(this.tileB);
     for (const key of this.decoKeys) check(key);
     for (const key of this.cloudKeys) check(key);
+    if (this.cit) {
+      for (const key of CIT_KEYS) check(key);
+      this.citKit = !!this.sprites.get("cit_floor_concrete") && !!this.sprites.get("cit_wall_v") && !!this.sprites.get("cit_road_h");
+    }
     this.hasTiles = !!this.sprites.get(this.tileA);
   }
 
@@ -302,7 +346,7 @@ export class BiomeBackground implements BackgroundRenderer {
     o.opacity = op;
     this.k!.drawEllipse(o);
   }
-  private sprite(data: SpriteData, x: number, y: number, frame: number, op = 1, angle = 0, scale: number = PIXEL_SCALE): void {
+  private sprite(data: SpriteData, x: number, y: number, frame: number, op = 1, angle = 0, scale: number = PIXEL_SCALE, flipX = false, flipY = false): void {
     const o = this.so;
     o.sprite = data;
     this.pv.x = Math.round(x);
@@ -311,6 +355,8 @@ export class BiomeBackground implements BackgroundRenderer {
     o.opacity = op;
     o.angle = angle;
     o.scale = scale;
+    o.flipX = flipX;
+    o.flipY = flipY;
     this.k!.drawSprite(o);
   }
 
@@ -321,6 +367,13 @@ export class BiomeBackground implements BackgroundRenderer {
     const sY = Math.round(scrollY);
     // oversized base fill: screen shake never exposes the canvas clear colour at the edges.
     // Skipped when tiles are loaded (they are opaque and drawn with a one-tile margin): one less full-screen fill pass.
+    if (this.cit) {
+      // round 6 (#11): the citadel draws its own base layout (floors, runway, roads, walls, pads) instead of tiles
+      this.drawCitadel(sY);
+      this.drawFeatures(sY);
+      this.drawCloudShadows(scrollY);
+      return;
+    }
     if (!this.hasTiles) this.rect(-24, -24, GAME_W + 48, GAME_H + 48, this.col("base"));
     if (this.hasTiles) {
       this.drawTiles(sY, time);
@@ -480,7 +533,7 @@ export class BiomeBackground implements BackgroundRenderer {
     for (let y = -m; y < GAME_H + m; y += step) {
       const wy = sY - y;
       const cx = riverX(wy);
-      const w = riverW(wy) * (icy ? 0.75 : 1);
+      const w = riverW(wy) * (icy ? ICY_RIVER_W : 1);
       this.rect(cx - w / 2 - 7, y, w + 14, step + 1, bank, icy ? 0.55 : 0.9);
       this.rect(cx - w / 2, y, w, step + 1, water, 1);
     }
@@ -495,7 +548,7 @@ export class BiomeBackground implements BackgroundRenderer {
         const flow = icy || reducedMotion ? 0 : (time * 14) % C;
         const y = sY - wy + flow;
         const cx = riverX(wy);
-        const w = riverW(wy) * (icy ? 0.75 : 1);
+        const w = riverW(wy) * (icy ? ICY_RIVER_W : 1);
         const x = cx + (hash2(i, r, 32) - 0.5) * (w - 20);
         // fade in/out over the flow cycle so a glint never pops when the modulo wraps
         const life = icy || reducedMotion ? 1 : Math.sin((Math.PI * flow) / C);
@@ -560,10 +613,195 @@ export class BiomeBackground implements BackgroundRenderer {
     }
   }
 
+  // ------------------------------------------------------------------ citadel base (round 6, #11)
+  /**
+   * The Iron Citadel as one coherent base (geometry in citadel.ts): floor tiles per plot (concrete / steel deck),
+   * the runway down the middle, pipe runs inside the perimeter walls, cross roads and compound walls every block,
+   * avenues on wide fields, helipads, and a foundation pad under every placed structure. Kit sprites (`cit_*`) when
+   * loaded, palette rects otherwise. About 60-150 sprites per frame, nothing allocated.
+   */
+  private drawCitadel(sY: number): void {
+    const L = this.cit!;
+    const T = CIT.tile;
+    const kit = this.citKit;
+    const cx = L.cx;
+    const m = BG_TUNING.shakeMargin;
+    const r0 = Math.floor((sY - GAME_H - m) / T) - 1;
+    const r1 = Math.floor((sY + m) / T) + 1;
+    const nc = Math.ceil((GAME_W / 2 + m) / T);
+    const A = L.avenue;
+    // 1. floors: one tile per 128 cell; the plot (side, plot, block) picks concrete or steel deck
+    const conc = this.spr("cit_floor_concrete");
+    const steel = this.spr("cit_floor_steel");
+    if (!kit) this.rect(-m, -m, GAME_W + 2 * m, GAME_H + 2 * m, this.col("base"));
+    for (let r = r0; r <= r1; r++) {
+      const y = sY - (r * T + T / 2);
+      const j = Math.floor((r * T) / CIT.block);
+      for (let c = -nc; c < nc; c++) {
+        const side = c >= 0 ? 1 : -1;
+        const k = c >= 0 ? c : -c - 1; // 0 = next to the runway
+        const plot = k - 1 > L.M - 1 ? -1 : A >= 0 && k - 1 >= A ? 1 : 0;
+        const deck = plot >= 0 && hash2(j * 3 + plot, side, 907) < 0.45;
+        const x = cx + c * T + T / 2;
+        if (kit) this.sprite(deck && steel ? steel : conc!, x, y, 0);
+        else if (deck) this.rect(x - T / 2, y - T / 2, T, T, this.col("metal"), 0.35);
+      }
+    }
+    // 2. runway (the flying lane)
+    const rw = this.spr("cit_runway_v");
+    for (let r = r0; r <= r1; r++) {
+      const y = sY - (r * T + T / 2);
+      if (kit && rw) this.sprite(rw, cx, y, 0);
+      else {
+        this.rect(cx - CIT.runwayHalf, y - T / 2, CIT.runwayHalf * 2, T + 1, this.col("road"), 1);
+        this.rect(cx - CIT.runwayHalf + 6, y - T / 2, 3, T + 1, this.col("light"), 0.5);
+        this.rect(cx + CIT.runwayHalf - 9, y - T / 2, 3, T + 1, this.col("light"), 0.5);
+        if (r % 2 === 0) this.rect(cx - 2, y - 30, 4, 40, this.col("light"), 0.45);
+      }
+    }
+    // 3. pipe runs along the inside of both perimeter walls (roads and walls are drawn over their ends)
+    const pipe = this.spr("cit_pipe_v");
+    for (let side = -1; side <= 1; side += 2) {
+      const px = L.latX(side, L.M) - side * (CIT.wallHalf + CIT.pipeBand / 2 + 2);
+      for (let r = r0; r <= r1; r++) {
+        const y = sY - (r * T + T / 2);
+        if (kit && pipe) this.sprite(pipe, px, y, 0);
+        else {
+          this.rect(px - 12, y - T / 2, 9, T + 1, this.col("pipe"), 0.9);
+          this.rect(px + 3, y - T / 2, 9, T + 1, this.col("pipe"), 0.9);
+        }
+      }
+    }
+    // 4. helipads (deterministic per plot block; the runner keeps structures off them)
+    const heli = this.spr("cit_helipad");
+    const j0 = Math.floor((sY - GAME_H - m - CIT.block) / CIT.block);
+    const j1 = Math.floor((sY + m) / CIT.block) + 1;
+    for (let j = j0; j <= j1; j++) {
+      const hy = sY - L.helipadWy(j);
+      if (hy < -80 || hy > GAME_H + 80) continue;
+      for (let side = -1; side <= 1; side += 2) {
+        for (let p = 0; p < L.plots.length; p++) {
+          const hx = L.helipadX(side, p, j);
+          if (Number.isNaN(hx)) continue;
+          if (kit && heli) this.sprite(heli, hx, hy, 0);
+          else {
+            this.ell(hx, hy, 44, 44, this.col("dark"), 0.8);
+            this.ell(hx, hy, 36, 36, this.col("accent"), 0.35);
+            this.rect(hx - 12, hy - 14, 5, 28, this.col("light"), 0.8);
+            this.rect(hx + 7, hy - 14, 5, 28, this.col("light"), 0.8);
+            this.rect(hx - 7, hy - 2, 14, 4, this.col("light"), 0.8);
+          }
+        }
+      }
+    }
+    // 5. vertical lines: avenue (road) and perimeter wall, one piece per 128 lattice row
+    for (let side = -1; side <= 1; side += 2) {
+      const wx = L.latX(side, L.M);
+      const ax = A >= 0 ? L.latX(side, A) : 0;
+      for (let r = r0; r <= r1; r++) {
+        const y = sY - r * T;
+        const node = r % 3 === 0;
+        const roadNode = node && L.isRoadLine(Math.floor(r / 3));
+        if (A >= 0) this.citPiece(roadNode ? "cit_road_cross" : "cit_road_v", ax, y, 0, false, false);
+        if (node) continue; // the horizontal pass draws the wall junction / road gate at line nodes
+        const below = (r - 1) % 3 === 0 && L.isRoadLine(Math.floor((r - 1) / 3));
+        const above = (r + 1) % 3 === 0 && L.isRoadLine(Math.floor((r + 1) / 3));
+        if (below) this.citPiece("cit_wall_end", wx, y, 0, false, true); // above a road gate: continues N
+        else if (above) this.citPiece("cit_wall_end", wx, y, 0, false, false); // below a road gate: continues S
+        else this.citPiece("cit_wall_v", wx, y, 0, false, false);
+      }
+    }
+    // 6. horizontal lines: cross roads (even j, through the perimeter gates) and compound walls (odd j)
+    for (let j = j0; j <= j1; j++) {
+      const y = sY - j * CIT.block;
+      if (y < -T || y > GAME_H + T) continue;
+      const road = L.isRoadLine(j);
+      for (let side = -1; side <= 1; side += 2) {
+        for (let mi = 0; mi <= L.M + 1; mi++) {
+          const x = L.latX(side, mi);
+          if (x < -T || x > GAME_W + T) continue;
+          if (road) {
+            if (mi !== A) this.citPiece("cit_road_h", x, y, 0, false, false);
+            continue;
+          }
+          if (mi > L.M || mi === A) continue;
+          // wall pieces: end caps facing the runway / the avenue, a T into the perimeter wall
+          const capOut = mi === 0 || (A >= 0 && mi === A + 1);
+          const capIn = A >= 0 && mi === A - 1;
+          if (mi === L.M) this.citPiece("cit_wall_tv", x, y, 0, side > 0, false);
+          else if (capOut) this.citPiece("cit_wall_end", x, y, side > 0 ? -90 : 90, false, false);
+          else if (capIn) this.citPiece("cit_wall_end", x, y, side > 0 ? 90 : -90, false, false);
+          else this.citPiece("cit_wall_h", x, y, 0, false, false);
+        }
+      }
+    }
+    // 7. foundation pads under placed structures
+    for (let i = 0; i < L.padN; i++) {
+      const y = sY - L.pwy[i]!;
+      const hh = L.phh[i]!;
+      if (y < -hh - 4 || y > GAME_H + hh + 4) continue;
+      const x = L.px[i]!;
+      const d = kit ? this.spr(PAD_KEYS[L.pkind[i]!]!) : null;
+      if (d) this.sprite(d, x, y, 0);
+      else {
+        const hw = L.phw[i]!;
+        this.rect(x - hw, y - hh, hw * 2, hh * 2, this.col("dark"), 0.9);
+        this.rect(x - hw + 4, y - hh + 4, hw * 2 - 8, hh * 2 - 8, this.col("metal"), 0.85);
+      }
+    }
+  }
+
+  /** one kit piece (128 units, centred); palette-rect fallback without the kit */
+  private citPiece(key: CitKey, x: number, y: number, angle: number, flipX: boolean, flipY: boolean): void {
+    if (y < -CIT.tile || y > GAME_H + CIT.tile) return;
+    const d = this.citKit ? this.spr(key) : null;
+    if (d) {
+      this.sprite(d, x, y, 0, 1, angle, PIXEL_SCALE, flipX, flipY);
+      return;
+    }
+    const T = CIT.tile;
+    const roadC = this.col("road");
+    const wallC = this.col("dark");
+    const lineC = this.col("roadLine");
+    const wh = CIT.wallHalf;
+    switch (key) {
+      case "cit_road_h":
+        this.rect(x - T / 2, y - CIT.roadHalf, T, CIT.roadHalf * 2, roadC, 1);
+        this.rect(x - 20, y - 2, 40, 4, lineC, 0.6);
+        break;
+      case "cit_road_v":
+        this.rect(x - CIT.roadHalf, y - T / 2, CIT.roadHalf * 2, T, roadC, 1);
+        this.rect(x - 2, y - 20, 4, 40, lineC, 0.6);
+        break;
+      case "cit_road_cross":
+        this.rect(x - T / 2, y - CIT.roadHalf, T, CIT.roadHalf * 2, roadC, 1);
+        this.rect(x - CIT.roadHalf, y - T / 2, CIT.roadHalf * 2, T, roadC, 1);
+        break;
+      case "cit_wall_h":
+        this.rect(x - T / 2, y - wh, T, wh * 2, wallC, 1);
+        break;
+      case "cit_wall_v":
+        this.rect(x - wh, y - T / 2, wh * 2, T, wallC, 1);
+        break;
+      case "cit_wall_tv":
+        this.rect(x - wh, y - T / 2, wh * 2, T, wallC, 1);
+        this.rect(flipX ? x - T / 2 : x, y - wh, T / 2, wh * 2, wallC, 1);
+        break;
+      case "cit_wall_end":
+        if (angle === 0) this.rect(x - wh, flipY ? y - T / 2 : y - wh, wh * 2, T / 2 + wh, wallC, 1);
+        else this.rect(angle < 0 ? x - wh : x - T / 2, y - wh, T / 2 + wh, wh * 2, wallC, 1);
+        break;
+      default:
+        break;
+    }
+  }
+
   // ------------------------------------------------------------------ set-piece features
   private drawFeatures(sY: number): void {
     for (let i = 0; i < this.features.length; i++) {
       const f = this.features[i]!;
+      // citadel: convoys drive on the runway / avenues, which are already roads
+      if (this.cit && f.kind === "road") continue;
       const yBottom = sY - f.wy0; // bottom end on screen
       const yTop = sY - f.wy1;
       if (yTop > GAME_H || yBottom < 0) continue;

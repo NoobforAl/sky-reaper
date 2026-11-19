@@ -549,12 +549,15 @@ export abstract class BossBase implements BossController {
    *  - core: shielded in phase 1 (or while a subclass keeps it shielded), and hardened at `coreFloor` of its HP until
    *    the final phase has run minPhaseSec (the defeat can never skip the final phase).
    */
+  /** phase-1 core shield anti-stall timer (s); per-boss override (round 6, QA R5-3: the gunship uses a shorter one) */
+  protected shieldTimeout: number = BOSS_TUNING.shieldTimeout;
+
   private applyShield(): void {
     const c = this.core;
     const T = BOSS_TUNING;
     let coreInv = false;
     if (c && !c.dead && c.e.alive) {
-      const shielded = (this.phase === 1 && this.phaseT < T.shieldTimeout) || this.coreShieldExtra();
+      const shielded = (this.phase === 1 && this.phaseT < this.shieldTimeout) || this.coreShieldExtra();
       if (shielded !== this.coreShielded) {
         this.coreShielded = shielded;
         if (!shielded) {

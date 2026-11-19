@@ -46,7 +46,47 @@ export function enemyKeys(def: EnemyDef): EnemyKeys {
   return k;
 }
 
-const pickupCache: Partial<Record<PickupKind, string>> = {};
+/**
+ * Round 6 item 13: per-chapter palette variants for AIR enemies (planes, helicopters, drones). The asset agent registers
+ * `K + "__" + biome` (biome = ChapterDef.biome) for every air sprite key K (bank / dmg / anim strips included); each key
+ * falls back to plain K when its variant is not registered. Bosses keep their own art (the World passes plain
+ * enemyKeys for boss parts). One cache per biome, keyed by def, built at the first spawn: no per-frame string building.
+ */
+const biomeCache = new Map<string, WeakMap<EnemyDef, EnemyKeys>>();
+
+export function enemyKeysForBiome(def: EnemyDef, biome: string, has: (key: string) => boolean): EnemyKeys {
+  const plain = enemyKeys(def);
+  if (def.layer !== "air" || !biome) return plain;
+  let m = biomeCache.get(biome);
+  if (!m) {
+    m = new WeakMap();
+    biomeCache.set(biome, m);
+  }
+  let k = m.get(def);
+  if (!k) {
+    const suf = "__" + biome;
+    const v = (key: string): string => (has(key + suf) ? key + suf : key);
+    const c: EnemyKeys = {
+      base: v(plain.base),
+      bankL: v(plain.bankL),
+      bankR: v(plain.bankR),
+      gun: v(plain.gun),
+      dead: v(plain.dead),
+      dmg: v(plain.dmg),
+      bankLDmg: v(plain.bankLDmg),
+      bankRDmg: v(plain.bankRDmg),
+      burn: v(plain.burn),
+      // muzzle placement is geometry of the base art, identical for every palette
+      muzzle: plain.muzzle,
+    };
+    const same = c.base === plain.base && c.bankL === plain.bankL && c.bankR === plain.bankR && c.dmg === plain.dmg;
+    k = same && c.gun === plain.gun && c.bankLDmg === plain.bankLDmg && c.bankRDmg === plain.bankRDmg ? plain : c;
+    m.set(def, k);
+  }
+  return k;
+}
+
+const pickupCache:Partial<Record<PickupKind, string>> = {};
 
 export function pickupKey(kind: PickupKind): string {
   return (pickupCache[kind] ??= "pickup_" + kind);

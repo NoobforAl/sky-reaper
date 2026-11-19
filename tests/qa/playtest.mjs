@@ -8,6 +8,8 @@
  *   node tests/qa/playtest.mjs tutorial  (chapter 1 real time, screenshots at every tutorial hint + vulnerability markers)
  * Flags: --nododge | --novice (+ --replan=18) | --replan=12 (human) | --budget (play/boss: start each chapter with the
  *   BALANCE_SPEC section 11 reference upgrade loadout for that chapter; default is a fresh save with 0 upgrades) | --suffix=x
+ *   | --chdmg=0.9,1.3,1.7,1.9,2.1 --sustain=1,1,0.5,0.4,0.35 --powermul=... (override WORLD_TUNING per-chapter tables for
+ *   balance iteration without a rebuild; QA hook window.__skyBalance)
  * Output: test-results/qa/<mode>.json (+ screenshots under test-results/qa/).
  * The bot lives in tests/qa/bot.js and only reads/drives the game through window.__sky.
  */
@@ -90,8 +92,15 @@ async function applyBudget(page, chapterId) {
   return ups;
 }
 
+/** --chdmg=a,b,c,d,e / --sustain=... / --powermul=...: per-chapter balance tables (window.__skyBalance, src/core/world.ts) */
+const numList = (v) => (v ? v.split(",").map(Number) : undefined);
+const BALANCE = { chapterDmg: numList(args.chdmg), sustainDropMul: numList(args.sustain), powerDropMul: numList(args.powermul) };
+
 async function startChapter(page, chapterId, params, botOpts) {
   await applyBudget(page, chapterId);
+  await page.evaluate((b) => {
+    window.__skyBalance = b.chapterDmg || b.sustainDropMul || b.powerDropMul ? b : undefined;
+  }, BALANCE);
   await page.evaluate(([id, p]) => window.__sky.goto("game", { chapterId: id, ...p }), [chapterId, params]);
   await page.waitForFunction(() => !!window.__sky?.game?.world, null, { timeout: 20000 });
   await page.evaluate((o) => window.__qaInstall(o), botOpts);

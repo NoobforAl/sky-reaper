@@ -39,6 +39,12 @@ export function desert(): ChapterScript {
   tl.at(46).arc("fighter_basic_elite", 5, C, { dx: 100 });
   tl.at(49).spawn("helicopter", R - 50).spawn("helicopter", L + 50, undefined, -80);
   tl.at(52).spawns("aa_turret", [L + 20, R - 20]);
+  // round 6 (#14): telegraphed gusts (1 s warning, 2-4 s push at 55-70 % of max speed, alternating sides). They start
+  // once the t 31 bomber has passed its carpet line (sanity.ts checkGusts); crawlers, fighters and a helicopter pair
+  // are the only fire while they blow.
+  tl.at(44.5).gust(1, 2.5, 0.56);
+  tl.at(48.5).gust(-1, 3, 0.6);
+  tl.at(53).gust(1, 3, 0.64);
   tl.at(56).weather("none", 0);
   // round 5 balance P6: the t 57 shield pickup is gone (ch3+ keeps only the pre-boss shield)
 
@@ -69,18 +75,25 @@ export function desert(): ChapterScript {
   // round 5 balance P5: the t 105 power pickup is gone (2 scripted: t 33 and t 184)
 
   // ---- sandstorm raid (special encounter)
-  tl.at(110).banner("SANDSTORM RAID", "CONTACTS IN THE DUST", 2400, { key: "wave.desert.sandstormRaid", subKey: "wave.desert.sandstormRaid.sub" }).weather("sandstorm", 0.95).wind(18);
+  tl.at(110).banner("SANDSTORM RAID", "CONTACTS IN THE DUST", 2400, { key: "wave.desert.sandstormRaid", subKey: "wave.desert.sandstormRaid.sub" }).weather("sandstorm", 0.95);
   tl.at(113).sideAmbush("interceptor", 3, "left", 140, 500);
   tl.at(115).droneMinefield(2, 5);
-  tl.at(118).sideAmbush("interceptor", 3, "right", 220, 500);
+  // round 6: the bomber pair moved up (was t 123, the right-side ambush t 118) so the raid's hazards come in one block
+  // and the second half is free for gusts
+  tl.at(123).sideAmbush("interceptor", 3, "right", 220, 500);
   tl.at(120).column("tank_heavy", 2, C, { dy: 80 }).spawns("tank_light", [L + 20, R - 20]);
-  tl.at(123).spawn("bomber_elite", LC).spawn("bomber", RC, undefined, -120);
+  tl.at(118).spawn("bomber_elite", LC).spawn("bomber", RC, undefined, -120);
   tl.at(126).spawns("missile_carrier", [C]);
   tl.at(129).stream("fighter_basic_elite", 5, LC, 320);
   tl.at(132).spawns("aa_turret", [L, R]).pickup("repair", C);
-  tl.at(135).weather("sandstorm", 0.3).wind(0);
+  // round 6 (#14): raid gusts (the old constant crosswind 18 is gone). None while the drone rows or the bomber pair's
+  // carpet runs are live (t 115-132): a push into a drone row or a bomb carpet could not be dodged.
+  tl.at(111).gust(-1, 3, 0.62);
+  tl.at(133.5).gust(1, 3, 0.66);
+  tl.at(137.5).gust(-1, 3, 0.68);
+  tl.at(135).weather("sandstorm", 0.55).wind(0);
   tl.at(136).vee("fighter_basic", 7, C, { dx: 40 });
-  tl.at(140).weather("none", 0);
+  tl.at(141).weather("none", 0);
 
   // ---- run-in to the fortress
   tl.at(143).banner("WAVE 6", "ARMOUR SCREEN", 2000, { key: "banner.wave", params: { n: 6 }, subKey: "wave.desert.armourScreen.sub" });
@@ -98,6 +111,7 @@ export function desert(): ChapterScript {
   tl.at(180).spawns("interceptor", [L, C, R]);
   tl.at(184).pickup("power", LC).pickup("bomb", RC).pickup("shield", C);
   tl.at(186).weather("sandstorm", 0.35);
+  tl.at(186.5).gust(-1, 2, 0.55);
 
   tl.at(190).scroll(24);
   tl.at(193).boss("land_fortress");
@@ -123,8 +137,10 @@ export function desert(): ChapterScript {
       ],
       // round 5: R1 reward 900 -> 1000; M1 starting guess gold / ace x1.25 (re-derive from round-5 QA)
       reward: 1000,
-      medalScores: medals([39000, 52500, 82000, 95000], 0.88),
+      // round 6 (QA R5-4): wide factor 0.88 -> 0.65 (wide median 50k vs portrait 82k; wide ACE was unreachable)
+      medalScores: medals([39000, 52500, 82000, 95000], 0.65),
     },
     features: tl.features,
+    gusts: tl.gusts,
   };
 }

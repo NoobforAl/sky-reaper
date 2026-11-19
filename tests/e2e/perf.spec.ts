@@ -2,21 +2,21 @@ import { test, expect } from "@playwright/test";
 import { fpsFloor, measureFps, realErrors, startChapter, trackErrors } from "./helpers";
 
 /**
- * Bomber-wave performance (round3 #10, docs/PERF_BOMBERS.md). desert @121 s spawns bomber_elite + bomber at 123 s:
+ * Bomber-wave performance (round3 #10, docs/PERF_BOMBERS.md). desert @116 s spawns bomber_elite + bomber at 118 s (round 6 moved the pair from 123 s):
  * their carpet-bomb volleys keep ~15-20 hazards (telegraph discs + rings + fx_warning) on screen at once, which used to
  * cost 5-11 ms of CPU per frame in KAPLAY's stroked drawCircle. Wide layout (GAME_W 1520) is the worst case.
  * FPS floor 50 with a GPU (fpsFloor() lowers it on software GL, where the 1520-wide canvas is fill-bound anyway).
  */
 test.use({ viewport: { width: 1600, height: 900 } });
 
-test("bomber wave holds FPS (desert@121, wide)", async ({ page }) => {
+test("bomber wave holds FPS (desert@116, wide)", async ({ page }) => {
   test.setTimeout(90_000);
   const errors = trackErrors(page);
   // boot() in helpers navigates to "/", so navigate with the layout query here
   await page.goto("/?layout=wide");
   await page.waitForFunction(() => !!(window as any).__sky, null, { timeout: 30_000 });
   expect(await page.evaluate(() => (window as any).__skyBootError ?? null)).toBeNull();
-  await startChapter(page, "desert", { startAt: 121, godMode: true, seed: 1 });
+  await startChapter(page, "desert", { startAt: 116, godMode: true, seed: 1 });
 
   // wait until the first carpet volleys are armed (bombers enter ~2 s after spawn, first carpet ~3 s later)
   await page
@@ -47,7 +47,7 @@ test("bomber wave holds FPS (desert@121, wide)", async ({ page }) => {
     type: "perf",
     description: `avg ${r.avg.toFixed(1)} fps (floor ${floor}), worst frame ${r.worstFrameMs.toFixed(1)} ms, hazards max ${hz.max} avg ${hz.avg.toFixed(1)}`,
   });
-  console.log(`[perf] bomber wave desert@121 wide: avg ${r.avg.toFixed(1)} fps (floor ${floor}) worst ${r.worstFrameMs.toFixed(1)} ms hazards max ${hz.max} avg ${hz.avg.toFixed(1)}`);
+  console.log(`[perf] bomber wave desert@116 wide: avg ${r.avg.toFixed(1)} fps (floor ${floor}) worst ${r.worstFrameMs.toFixed(1)} ms hazards max ${hz.max} avg ${hz.avg.toFixed(1)}`);
 
   expect(hz.max, "the scenario must actually put carpet-bomb hazards on screen").toBeGreaterThan(0);
   expect(r.avg).toBeGreaterThanOrEqual(floor);

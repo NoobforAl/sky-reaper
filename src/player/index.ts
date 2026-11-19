@@ -29,8 +29,14 @@ export const PLAYER_TUNING = {
   /** touch drag: proportional gain (1/s) toward dragTarget and speed cap multiplier */
   dragGain: 20,
   dragSpeedMul: 2.6,
-  /** wind velocity damping (1/s) */
-  windDamp: 1.2,
+  /**
+   * round 6 item 14: wind drift. The World eases `wind` (setWind scale) over ~0.3 s; the drift velocity is
+   * clamp(wind / windFull, -1, 1) * windPushFrac * maxSpeed (horizontal, incl. the wide-field H_SPEED_MUL), added on
+   * top of the steering velocity. At full gust the player still counter-steers at 30 % of max speed against it.
+   * (Was: wind integrated as acceleration with 1.2/s damping, i.e. terminal drift ax/1.2 = ~15 u/s, about 5 % of speed.)
+   */
+  windFull: 60,
+  windPushFrac: 0.7,
   marginX: 18,
   marginTop: 70,
   marginBottom: 34,
@@ -57,6 +63,12 @@ export const PLAYER_TUNING = {
   /** horizontal speed/accel multiplier on wide (desktop) playfields: clamp(sqrt(X_SCALE), 1, hSpeedMax) */
   hSpeedMax: 1.6,
 } as const;
+
+/** signed wind drift as a fraction of the player's max horizontal speed (|result| <= windPushFrac) */
+export function windPushFrac(wind: number): number {
+  const n = wind / PLAYER_TUNING.windFull;
+  return (n > 1 ? 1 : n < -1 ? -1 : n) * PLAYER_TUNING.windPushFrac;
+}
 
 /** horizontal speed multiplier for the live playfield width (1 on the 480 portrait field) */
 export const H_SPEED_MUL = Math.max(1, Math.min(PLAYER_TUNING.hSpeedMax, Math.sqrt(X_SCALE)));
@@ -176,9 +188,8 @@ export class PlayerController {
       p.vx = approach(p.vx, mx * maxV * H_SPEED_MUL, (mx !== 0 ? T.accel : T.decel) * H_SPEED_MUL * dt);
       p.vy = approach(p.vy, my * maxV, (my !== 0 ? T.accel : T.decel) * dt);
     }
-    // wind: drifts the aircraft, decays when the wind stops
-    this.wv += w.wind * dt;
-    this.wv -= this.wv * Math.min(1, T.windDamp * dt);
+    // wind: drift velocity from the (already eased) world wind; see PLAYER_TUNING.windFull
+    this.wv = windPushFrac(w.wind) * maxV * H_SPEED_MUL;
     p.x += (p.vx + this.wv) * dt;
     p.y += p.vy * dt;
     if (p.x < T.marginX) {

@@ -1,5 +1,144 @@
 # SKY REAPER: QA playtest and balance report
 
+## Round 6 verification (citadel redesign, river boats, biome enemy colours, desert gusts, R5 balance, Farsi signs)
+
+Date: 2026-11-19 · Build: a fresh `vite build` of the current working tree (round-6 edits, uncommitted) into `%TEMP%\sr-qa-r6\dist`, served by `vite preview --port 5510` (stopped afterwards). Normal difficulty. About 70 bot runs, a 10-cell godMode boss pass, a real-time GPU FPS pass (8 cells, Intel UHD, 75 Hz cap) and about 60 screenshots, all read. Raw JSON and screenshots: `%TEMP%\sr-qa-r6\out\` and `%TEMP%\sr-qa-r6\shots\`.
+
+**Gates:**
+- `npx tsc --noEmit`: clean. `npm run typecheck:worker`: clean.
+- `node tests/i18n/check.mjs`: PASS (502 en / 502 fa, 36 signed numbers bidi-checked).
+- Level sanity (`src/levels/sanity.ts` via Vite SSR) at 540×960 portrait and 1138 / 1366 / 1920 wide: **0 errors, 0 warnings** in all 5 chapters. `checkCitadel`: 38 structures, 0 failures (max added delay 4.84 s portrait, 1.57 s wide). `checkNaval` / `checkGusts`: clean.
+- `npx playwright test`: **13/13 passed** after one test fix (below). First run: 12/13. `perf.spec.ts` failed with "0 hazards on screen", because the level agent moved the desert bomber pair from t 123 to t 118.
+- 0 page or console errors in every bot, boss, FPS and screenshot run.
+
+**Harness changes (tests only):**
+- `tests/e2e/perf.spec.ts`: the scenario now starts at **t 116** (was 121), so the moved bomber pair is in frame. The checks are unchanged. Result: 75.1 fps average, worst frame 13.6 ms, **19 hazards** at peak (average 10.8). Floor 50, stall < 150 ms.
+- `tests/qa/bot.js` `evalCand`: the bot now adds the wind drift (`world.windInfo.push × speed × H_SPEED_MUL`, the same formula as `src/player`) to its predicted position. Without this, during a gust every dodge candidate was off by up to 0.6 × speed × t. The bot was flying blind, while a human sees the arrow and counter-steers. This does not weaken any check. It changes the desert verdict (see A2), so both numbers are given below.
+
+### Headline
+
+**No: a 0-upgrade novice does not reliably fail by ch3.**
+- With the original bot, 2/4 ch3 runs fail, matching the engine report. Both failures are on wide.
+- With the wind-aware bot, **0/4 fail** in desert (1–2 deaths each). Half of the earlier "failures" came from the bot not seeing the wind, not from damage.
+- The 0-upgrade wall is now at **ch4** (2/4 fail with the wind-aware bot) and **ch5** (4/4 game over at t 124–162).
+- Budget novices win everything. Experts hold ≤ 1 death.
+
+The other round-6 items check out: citadel layout, boats on the river, per-chapter colours (one contrast issue), gusts, and Farsi signs. Per-hit damage in ch3 is now the highest in the game (see R6-2).
+
+### Targets
+
+| # | setup | target | result (round 6) | verdict |
+|---|---|---|---|---|
+| A1 | no-dodge, 0 upg, ch1 | ≥ 1 death | 2/2 wins, **0 deaths** (dmg 229 / 330) | miss (unchanged) |
+| A1 | no-dodge, 0 upg, ch2 | game over 2/2 | wide: game over t 117 · portrait: win, 1 death | 1 of 2 (unchanged) |
+| A1 | (info) no-dodge ch3 | – | game over 2/2 at **t 43 / 56** (round 5: t 127 / 142) | – |
+| A2 | novice, 0 upg, ch1 / ch2 | wins, 0–2 deaths | 8/8 wins, 0 deaths (dmg 14–87) | met |
+| A2 | novice, 0 upg, **ch3** | fails ≥ 3/4 | original bot: **2/4** (wide s1 t 131, wide s2 t 185; portrait wins with 2 / 1 deaths) · wind-aware bot: **0/4** (wins with 1 / 1 / 2 / 2 deaths, dmg 409–570) | **miss** |
+| A2+ | novice, 0 upg, ch4 | (implied: fail) | original: 2/4 (both wide) · wind-aware: 2/4 (s1 both layouts, t 171 / 192; s2 wins with 2 deaths) | partial |
+| A2+ | novice, 0 upg, ch5 | (implied: fail) | **4/4 game over** (t 124–162), power 1–2 | met |
+| A3 | novice `--budget` ch3 / ch4 / ch5 | ≥ 3/4 wins, avg 1–3 deaths | 12/12 wins. Original: avg deaths 0.75 / 1.0 / 1.75 · wind-aware: desert **0.5**, arctic **0.75** | ch5 met; ch3–4 slightly **too easy** |
+| A4 | expert, 0 upg, ch3–5 | wins, 0–1 deaths | 12/12 wins. Deaths ≤ 1: three runs with 1 (desert wide s1 died inside the t 133.5 gust; citadel portrait s1; citadel wide s2). Wind-aware desert: 4/4 with 0 deaths (dmg 0–101) | met |
+| A5 | boss pass, godMode, power 4, `--budget` | phases ≥ 10 s, total 40–60 s, escalation ≤ 1 | total **39.5–61.8 s**. Pacific portrait 39.5 (just under); **arctic wide 61.8** (P3 36.6 s at escalation 2); **jungle wide 83.5 → 59.4**; jungle portrait 51.4 (P1 escalation 2). Every phase ≥ 10.0 s | 8/10 in range, close miss on 2 |
+| A5g | phase gate | < 3 s per phase | 0–2.6 s except **desert wide P1 5.65 s** | 9/10 |
+| A6 | unavoidable hits (`minSafe ≤ 0`) | none for expert | expert 1 (citadel wide s2) out of 57 hits · novice 0–2 per run | as round 5 |
+
+### Per-hit damage (bot hit logs; effective life = 100 hull + 40 shield)
+
+| chapter | chapterDmg | average hit | max hit |
+|---|---|---|---|
+| pacific / jungle | 0.9 / 1.3 | 7–15 | 18–39 |
+| **desert** | **4.6** | **40–75** | **92 (heavy-tank shell), 110** |
+| arctic | 3.1 | 26–37 | 62–93 |
+| citadel | 3.3 | 29–39 | 46–73 |
+
+Two desert hits cost a life. The no-dodge bot lost its first life at **t 15.8 s** in desert portrait. Ch3 now hurts more per hit than ch4–5.
+
+### Visual checks (screenshots read)
+
+- **Citadel (item 11): met.** Wide and portrait at t 12 / 40 / 72 / 88 / 131 / 165 and during the boss.
+  - The layout is a coherent base: perimeter walls with pipe runs, a central runway that stays clear, avenues on wide, cross roads through gates, plots with concrete or steel floors, and helipads.
+  - Every turret, radar, AA site, hangar and base sits on a foundation pad.
+  - Convoy and train run down the runway (t 88 / 131).
+  - No floating or overlapping set pieces. The boss ring reads well over the runway.
+  - Cosmetic: on wide, the short compound-wall segments between the avenue and the runway read as free-standing bars (R6-5).
+- **River boats (item 12): met.** Jungle wide and portrait at t 29–60 and 121–126, and arctic t 98–104: gunboats and destroyers stay on the water and follow the bends.
+  - Side finding: in arctic portrait at t 104, two armoured vehicles drive on the river edge and their wrecks lie on the water (R6-4).
+- **Enemy colours per chapter (item 13): met with one contrast issue.**
+  - Runtime check: every on-screen air enemy in all 5 chapters used its `K__<biome>` key (`__ocean`, `__jungle`, `__desert`, `__arctic`, `__citadel`). Ground units and bosses keep their base keys.
+  - Readable:
+    - pacific: light grey-blue on navy;
+    - jungle: olive/tan over trees;
+    - arctic: white with a dark outline and a drop shadow, low but acceptable contrast on snow;
+    - citadel: steel with red tips on a dark floor.
+  - **Desert helicopters (sand/tan) blend into the sand** (desert wide t 58, R6-3).
+- **Desert gusts (item 14): met.** Hands-off test at desert t 42–50 with godMode:
+  - The telegraph starts **0.95–0.97 s** before each gust and shows the right direction.
+  - `push` peaks at **0.595**.
+  - With no input, the ship was carried **≈ 250 u in 1.7 s** (portrait 213 → 462, where it is clamped at the edge) and 518 u across two gusts on wide.
+  - The screenshots show the top-centre arrow (blinking in the telegraph), the moving streaks and a light sand veil.
+  - **Fairness:**
+    - 0 of 48 desert hits inside a gust window were unavoidable (`minSafe` 0.24–0.91).
+    - Hits still cluster in gusts: with the original bot, 45 % of desert hits landed in gust windows that cover ~13 % of the time. With the wind-aware bot this fell to 31 % (23 of 75).
+    - The t 48.5–56 and t 133.5–137.5 gusts overlap dense waves (fighter_basic_elite, sand crawlers, heavy tanks). They are hard but escapable.
+  - The arrow at y 92 sits in the enemy entry band and overlaps tanks and pickups there (R6-6, cosmetic).
+- **Farsi signed numbers (R5-5): fixed.** Checked on the Shop screen with the Tehran-time Farsi default, zoomed 8×: "+10%" and "-0.8" have the sign on the left. A canvas pixel-diff test confirms that the LRM puts the sign before the digits in an RTL paragraph, and without the LRM after them. Final wording sign-off is still with a native reader.
+
+### FPS (real time, Edge GPU, 75 Hz cap; 35 s early waves + 35 s boss per cell)
+
+- Desert, citadel, jungle and arctic, both layouts: **average 75 in every cell**, minimum 1-s bucket 75, worst frame 14 ms.
+- Exceptions:
+  - arctic wide boss: minimum 64, one 160 ms frame;
+  - desert portrait boss: worst frame 27 ms.
+- The citadel background (60–150 sprites) and the wind streaks / veil cost nothing measurable.
+- `perf.spec` bomber wave: 75.1 fps, 19 hazards.
+
+### Round 5 issues
+
+| # | status |
+|---|---|
+| R5-1 0-upgrade clears the campaign | **partly resolved**: ch5 is a wall (4/4), ch4 2/4, **ch3 0/4** with a wind-aware bot (R6-1) |
+| R5-2 low power on wide | **improved**, but wide is still much harder: in ch3 wide, 0-upgrade runs fail with the original bot while portrait wins; end-of-run power on wide is 1–3 (portrait 3–5) |
+| R5-3 boss totals | **mostly resolved**: jungle wide 83.5 → 59.4; still out of range: arctic wide 61.8 (P3 36.6 s), pacific portrait 39.5 |
+| R5-4 medals | not re-verified this round (no medal changes reported) |
+| R5-5 Farsi signs | **resolved** (pixel-verified) |
+| R5-6 expert unavoidable hit | 1 expert sample again (citadel wide s2); unchanged |
+| R5-7 jungle "2 bases or hangars" | **still 0/4** novice jungle runs (`tagKills.base` 0); only the no-dodge portrait run got 2 |
+
+### Round 6 issues
+
+**R6-1. The ch3 (desert) 0-upgrade target is still missed (owner: engine `src/core/world.ts`, with level `desert.ts`). Severity: high (the user's complaint).**
+- **Evidence:** with the wind-aware bot, novice 0-upgrade wins 4/4 in desert (1–2 deaths, 409–570 damage), and budget novices average 0.5 deaths. The engine's 2/4 included the bot being wind-blind.
+- **Why raising damage further is the wrong lever:** chapterDmg 4.6 already makes desert hits 40–110, more than ch4–5. As the engine noted, 0-upgrade and budget novices take nearly the same damage.
+- **Suggestions:**
+  - Separate them on DPS and time pressure instead: more HP on desert mid-wave ground and armour, so 0-upgrade DPS cannot clear lanes and the screen fills up. Keep the current damage, or drop it to ~3.0 so the damage curve is monotonic (ch3 ≤ ch4).
+  - Or accept ch4 as the 0-upgrade wall and re-state the target.
+
+**R6-2. Non-monotonic damage curve: ch3 hurts more than ch4–5 (owner: engine `chapterDmg`). Severity: medium (feel).**
+- **Evidence:** average hit 40–75 in desert vs 26–39 in arctic and citadel. One heavy-tank shell is 92 out of an effective life of 140. The no-dodge bot dies at t 15.8.
+- **Suggestion:** chapterDmg about [0.9, 1.3, 2.8, 3.1, 3.3], and move the ch3 difficulty to enemy HP and density (R6-1).
+
+**R6-3. Desert helicopters are camouflaged against the sand (owner: assets `scripts/art/gen_biome.mjs` desert palette). Severity: low–medium (readability).**
+- **Evidence:** in `desert_wide_t58.png`, the tan `helicopter__desert` is hard to pick out on the dunes.
+- **Suggestion:** darken the desert airframe (brown or olive-drab) or brighten the outline. Planes are fine because their banded wings contrast.
+
+**R6-4. Arctic ground vehicles drive onto the river (owner: level `arctic.ts` / runner). Severity: low.**
+- **Evidence:** arctic portrait t ≈ 104: two armoured vehicles on the right river edge, and their wrecks lie on the water.
+- **Suggestion:** `checkNaval` only warns about stationary structures. Extend it to moving ground units, then nudge their lanes.
+
+**R6-5. Citadel wide: free-standing compound-wall bars (owner: level backgrounds `citadel.ts`). Severity: cosmetic.**
+- **Evidence:** the short wall segments between avenue and runway (e.g. `citadel_wide_t40.png`, y ≈ 350) are not joined to anything.
+- **Suggestion:** join them to the avenue with a T-joint, or drop them.
+
+**R6-6. The gust arrow overlaps the enemy entry band (owner: engine `src/core/render.ts` `drawWindHud`). Severity: cosmetic.**
+- **Evidence:** the arrow at y 92 draws over tanks and pickups entering the screen.
+- **Suggestion:** move it to the HUD bar edge, or fade it over sprites as it already does over the player.
+
+**R6-7. Arctic wide boss length and desert wide phase gate (owner: bosses). Severity: low.**
+- arctic wide 61.8 s, with P3 at 36.6 s and escalation 2;
+- desert wide P1 gated 5.65 s.
+
+**Not covered this round:** tutorial and UI screens apart from the Farsi Shop, and medal thresholds (R5-4).
+
 ## Round 5 verification (popups, separation, BALANCE_SPEC, bomber perf, enemy animations, Farsi)
 
 Date: 2026-11-19 · Build: a fresh `vite build` of the committed tree (`0eba70b`, unchanged in the working tree) into a scratch folder, served by `vite preview --port 5410`. The bots ran on normal difficulty, in both layouts, with the seeds listed in BALANCE_SPEC §11. That is 66 bot runs plus a 14-run godMode boss pass, followed by a real-time GPU FPS pass (20 cells) and a screenshot pass (gameplay in 5 chapters × 2 layouts, bomber wave, popups on and off, and 10 UI screens × 2 languages × 2 layouts).

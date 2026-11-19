@@ -132,6 +132,23 @@ function manual(n: number, grouping: boolean, decimals: number | undefined): str
   return d ? `${g}.${d}` : g;
 }
 
+// ------------------------------------------------------------------ bidi of signed numbers (QA R5-5)
+
+/** U+200E LEFT-TO-RIGHT MARK */
+export const LRM = "\u200E";
+const SIGNED_RE = /(^|[^0-9\u06F0-\u06F9\u200E])([+\-])(?=[0-9\u06F0-\u06F9])/g;
+
+/**
+ * Keep "+15" / "-0.8" in reading order inside RTL text. In an RTL paragraph a leading +/- is a neutral and the
+ * Unicode bidi algorithm moves it to the far side of the number ("15+"). An LRM right before the sign makes the
+ * sign, the digits (ASCII or Persian, both bidi class EN) and a trailing ٪ one left-to-right run. Digit-sign-digit
+ * ranges ("1-3") are left alone; idempotent. Applied by t() for "fa" and by TextService for every RTL paragraph,
+ * so strings composed outside t() are covered too.
+ */
+export function bidiSigned(s: string): string {
+  return s.indexOf("+") < 0 && s.indexOf("-") < 0 ? s : s.replace(SIGNED_RE, `$1${LRM}$2`);
+}
+
 // ------------------------------------------------------------------ t()
 
 const warned = new Set<string>();
@@ -178,7 +195,7 @@ export function t(key: StringKey | (string & {}), params?: TParams, l: Locale = 
   }
   const tail = raw.slice(last);
   out += pd ? toPersianDigits(tail) : tail;
-  return out;
+  return l === "fa" ? bidiSigned(out) : out;
 }
 
 /** en: one / other; fa: Persian nouns after numbers stay singular -> always the first form unless a 2nd exists for 0 */

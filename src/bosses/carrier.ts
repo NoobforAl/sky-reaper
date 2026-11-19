@@ -5,7 +5,7 @@
  *  P3  bridge: spiral | broadside (all turrets, 1 s telegraph) | missile salvo | carrier swings wider
  *  Parts change attacks: no launchers -> no missiles; no turrets -> bridge gains aimed needles.
  */
-import { GAME_W, type WorldAPI } from "../contracts";
+import { GAME_W, WIDE, type WorldAPI } from "../contracts";
 import { BP } from "./attacks";
 import { BossBase, roam, type PartRT } from "./framework";
 
@@ -13,7 +13,9 @@ export class CarrierBoss extends BossBase {
   readonly displayName = "CARRIER LEVIATHAN";
 
   constructor(world: WorldAPI) {
-    super("carrier", world, 1.6); // round 5 B1: 0.85 -> 1.6
+    // round 5 B1: 0.85 -> 1.6; round 6 (QA R5-3): portrait boss pass ran 37.3 s (< 40 s). +0.1 was not enough (37.5 s:
+    // P1 / P2 sit on the 10 s phase floor, only P3 grows; 1.95 gave 38.6 s) -> 2.2 on the 480 field
+    super("carrier", world, WIDE ? 1.6 : 2.2);
     this.holdY = 250;
     this.entrySec = 4;
     this.y = -320;

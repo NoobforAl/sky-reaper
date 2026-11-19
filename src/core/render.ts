@@ -12,6 +12,7 @@ import { FXDEF } from "./fxdefs";
 import { pickupKey } from "./spritekeys";
 import type { Bullet, EnemyRT, Fx, Hazard, Pickup } from "./types";
 import { WORLD_TUNING, type ScorePopup, type World } from "./world";
+import { PLAYER_TUNING } from "../player";
 
 const PI = Math.PI;
 
@@ -43,6 +44,28 @@ function segLevel(r: number): number {
 }
 
 /** score popup fade / near-player dimming */
+/**
+ * round 6 item 14 gust telegraph: sand / snow streaks crossing the screen in the gust direction (fixed pool, cosmetic,
+ * render-clock only), a HUD-style arrow at the top centre, and a translucent veil scaled by gust strength.
+ */
+const WIND_FX = {
+  streaks: 44,
+  /** streaks spawned per second at full strength (telegraph uses teleRate) */
+  rate: 70,
+  teleRate: 26,
+  speedMin: 520,
+  speedMax: 900,
+  lenMin: 18,
+  lenMax: 64,
+  /** veil alpha at full gust (desert; snow uses 0.8x) */
+  veilMax: 0.2,
+  arrowY: 92,
+  arrowW: 46,
+  /** the arrow fades to this alpha when the player flies under it */
+  arrowNearAlpha: 0.25,
+  arrowNearDist: 56,
+} as const;
+
 const POPUP_NEAR = 70;
 const POPUP_NEAR_ALPHA = 0.3;
 
@@ -80,6 +103,17 @@ export class Renderer {
   private flashOk = true;
   private flashShaderReady = false;
   private fontOk: boolean | null = null;
+  // gust telegraph state (pooled; see WIND_FX)
+  private wsX = new Float32Array(WIND_FX.streaks);
+  private wsY = new Float32Array(WIND_FX.streaks);
+  private wsV = new Float32Array(WIND_FX.streaks);
+  private wsL = new Float32Array(WIND_FX.streaks);
+  private wsA = new Float32Array(WIND_FX.streaks);
+  private wsLive = new Uint8Array(WIND_FX.streaks);
+  private wsAcc = 0;
+  private wsClock = 0;
+  private triPts: Vec2[] = [];
+  private tpo!: DrawPolygonOpt;
 
   constructor(svc: Services, world: World, hud: HudRenderer) {
     this.k = svc.k;
@@ -121,6 +155,8 @@ export class Renderer {
     this.dpo = { pts: this.discPts[0]!, pos: this.pv, color: this.WHITE, opacity: 1 };
     this.rpo = { pts: this.ringPts[0]!, indices: this.ringIdx[0]!, pos: this.pv, color: this.WHITE, opacity: 1 };
     this.to = { text: "", pos: this.pv, size: 12, anchor: "center", color: this.WHITE, opacity: 1 };
+    this.triPts = [k.vec2(0, 0), k.vec2(0, 0), k.vec2(0, 0)];
+    this.tpo = { pts: this.triPts, pos: this.pv, color: this.WHITE, opacity: 1 };
     if (flashShaderCtx === k) this.flashShaderReady = true;
     else {
       try {
@@ -346,7 +382,9 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     } catch (err) {
       this.bgErr(err);
     }
+    this.drawWindStreaks();
     k.popTransform();
+    this.drawWindHud();
 
     // screen flash
     if (w.flashT > 0) {
@@ -359,6 +397,124 @@ vec4 frag(vec2 pos, vec2 uv, vec4 color, sampler2D tex) {
     } catch (err) {
       this.hudErr(err);
     }
+  }
+
+  // ------------------------------------------------------------------ wind (gust telegraph)
+  /** 0..1 gust strength shown by the telegraph (live wind, or the announced gust during telegraphWind) */
+  private windVis(): { s: number; dir: number; tele: boolean } {
+    const w = this.w;
+    const wi = w.windInfo;
+    const s = Math.min(1, Math.abs(wi.push) / PLAYER_TUNING.windPushFrac);
+    const vis = this.wvis;
+    if (wi.telegraph > 0 && (s < WORLD_TUNING.windTelegraphMin || Math.sign(wi.ax) !== wi.telegraphDir)) {
+      vis.s = 0.45;
+      vis.dir = wi.telegraphDir;
+      vis.tele = true;
+    } else {
+      vis.s = s >= WORLD_TUNING.windTelegraphMin ? s : 0;
+      vis.dir = wi.ax < 0 ? -1 : 1;
+      vis.tele = false;
+    }
+    return vis;
+  }
+  private wvis = { s: 0, dir: 1, tele: false };
+  /** renderer-local rng: the world's frng also moves pickups, so render-rate calls must not consume it */
+  private wSeed = 0x2545f491;
+  private wrng(): number {
+    let x = this.wSeed;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    this.wSeed = x >>> 0;
+    return this.wSeed / 4294967296;
+  }
+
+  private drawWindStreaks(): void {
+    const F = WIND_FX;
+    const dt = Math.min(0.05, this.k.dt());
+    this.wsClock += dt;
+    const v = this.windVis();
+    const w = this.w;
+    const n = this.wsX.length;
+    // spawn: entering from the upwind edge (plus some mid-field so the screen fills at once)
+    if (v.s > 0) {
+      this.wsAcc += dt * (v.tele ? F.teleRate : F.rate * v.s);
+      let guard = 6;
+      while (this.wsAcc >= 1 && guard-- > 0) {
+        this.wsAcc -= 1;
+        for (let i = 0; i < n; i++) {
+          if (this.wsLive[i]) continue;
+          this.wsLive[i] = 1;
+          const edge = this.wrng() < 0.7;
+          this.wsX[i] = edge ? (v.dir > 0 ? -40 : GAME_W + 40) : this.wrng() * GAME_W;
+          this.wsY[i] = 60 + this.wrng() * (GAME_H - 80);
+          this.wsV[i] = v.dir * (F.speedMin + (F.speedMax - F.speedMin) * this.wrng()) * (0.6 + 0.4 * Math.max(v.s, 0.5));
+          this.wsL[i] = F.lenMin + (F.lenMax - F.lenMin) * this.wrng();
+          this.wsA[i] = 0.45 + 0.4 * this.wrng();
+          break;
+        }
+      }
+    } else this.wsAcc = 0;
+    const snow = w.chapter.biome === "arctic";
+    const c = snow ? this.col(235, 242, 255) : this.col(236, 204, 140);
+    const fade = v.s > 0 ? 1 : 0;
+    for (let i = 0; i < n; i++) {
+      if (!this.wsLive[i]) continue;
+      const vx = this.wsV[i]!;
+      const x = (this.wsX[i] = this.wsX[i]! + vx * dt);
+      // slight downward slant with the scroll so streaks read as wind, not lasers
+      const y = (this.wsY[i] = this.wsY[i]! + 40 * dt);
+      if (!fade) this.wsA[i] = this.wsA[i]! - dt * 2.5;
+      if (x < -80 || x > GAME_W + 80 || y > GAME_H + 10 || this.wsA[i]! <= 0) {
+        this.wsLive[i] = 0;
+        continue;
+      }
+      this.rect(x, y, this.wsL[i]!, 2, c, this.wsA[i]!, 0, false);
+    }
+  }
+
+  private drawWindHud(): void {
+    const F = WIND_FX;
+    const v = this.windVis();
+    if (v.s <= 0) return;
+    const w = this.w;
+    const snow = w.chapter.biome === "arctic";
+    // translucent veil (visibility drop) only for a real gust, not the telegraph
+    if (!v.tele) this.rectTL(0, 0, GAME_W, GAME_H, snow ? this.col(225, 232, 245) : this.col(206, 162, 96), F.veilMax * v.s * (snow ? 0.8 : 1));
+    // arrow: blinks during the telegraph, solid (pulsing) during the gust; fades when the player is right under it
+    let a = v.tele ? (Math.floor(this.wsClock * 6) % 2 === 0 ? 0.95 : 0.25) : 0.6 + 0.3 * v.s + 0.1 * Math.sin(this.wsClock * 10);
+    const p = w.pc.state;
+    const cx = GAME_W / 2;
+    const cy = F.arrowY;
+    if (p.alive && Math.abs(p.y - cy) < F.arrowNearDist && Math.abs(p.x - cx) < F.arrowW + F.arrowNearDist * 0.5) a *= F.arrowNearAlpha;
+    const d = v.dir;
+    const half = F.arrowW / 2;
+    const col = snow ? this.col(220, 235, 255) : this.col(255, 196, 70);
+    // dark outline then the fill
+    this.rect(cx - d * 6, cy, F.arrowW - 8, 12, this.BLACK, a * 0.55);
+    this.arrowHead(cx + d * (half - 4), cy, d, 15, 13, this.BLACK, a * 0.55);
+    this.rect(cx - d * 6, cy, F.arrowW - 12, 6, col, a);
+    this.arrowHead(cx + d * (half - 6), cy, d, 11, 9, col, a);
+    // strength chevrons behind the shaft (1..3)
+    const pips = v.tele ? 1 : v.s > 0.8 ? 3 : v.s > 0.5 ? 2 : 1;
+    for (let i = 0; i < pips; i++) this.rect(cx - d * (half + 6 + i * 9), cy, 4, 10, col, a * (0.8 - i * 0.2));
+  }
+
+  /** filled triangle pointing along +x (d = 1) or -x (d = -1), tip at (x + d*len, y) */
+  private arrowHead(x: number, y: number, d: number, len: number, halfH: number, c: Color, opacity: number): void {
+    const pts = this.triPts;
+    pts[0]!.x = d * len;
+    pts[0]!.y = 0;
+    pts[1]!.x = 0;
+    pts[1]!.y = -halfH;
+    pts[2]!.x = 0;
+    pts[2]!.y = halfH;
+    this.pv.x = x;
+    this.pv.y = y;
+    const o = this.tpo;
+    o.color = c;
+    o.opacity = opacity;
+    this.k.drawPolygon(o);
   }
 
   private bgErrN = 0;

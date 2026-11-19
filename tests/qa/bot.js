@@ -221,7 +221,11 @@
 
     // evaluate a candidate: returns [hardHitTime or -1, softDanger, endX, endY]
     function evalCand(p, c) {
-      var vx = c[0] * spd * hSpeedMul,
+      // round 6 (#14): the player's ship drifts with the wind (src/player windPushFrac: push * maxSpeed * H_SPEED_MUL on
+      // top of the steering velocity). Predict with that drift, like a player who sees the gust arrow and counter-steers;
+      // without it every candidate is off by up to ~0.7 * speed * t during a gust and the bot flies blind.
+      var wi = w.windInfo;
+      var vx = c[0] * spd * hSpeedMul + (wi && wi.push ? wi.push * spd * hSpeedMul : 0),
         vy = c[1] * spd;
       var hardT = -1,
         soft = 0;

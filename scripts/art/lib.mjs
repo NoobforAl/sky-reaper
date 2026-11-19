@@ -537,7 +537,7 @@ export class Registry {
     const fr = Array.isArray(frames) ? frames : [frames];
     for (const f of fr) if (f.w !== fr[0].w || f.h !== fr[0].h) throw new Error("frame size mismatch in " + key);
     this.keys.add(key);
-    this.items.push({ key, frames: fr, w: fr[0].w, h: fr[0].h, fps: opts.fps, loop: opts.loop, placeholder: opts.placeholder, group: opts.group ?? "misc" });
+    this.items.push({ key, frames: fr, w: fr[0].w, h: fr[0].h, fps: opts.fps, loop: opts.loop, placeholder: opts.placeholder, group: opts.group ?? "misc", atlas: opts.atlas });
     return fr;
   }
   get(key) {
